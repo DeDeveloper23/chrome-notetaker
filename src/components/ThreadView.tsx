@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { ChevronLeft, Send, Sparkles, Pencil, Check, X } from 'lucide-react';
-import type { Thread, Note } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronLeft, Sparkles, Pencil, Check, X } from 'lucide-react';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import type { Thread, Note, GeminiModel } from '../types';
 
 interface ThreadViewProps {
   thread: Thread;
   onBack: () => void;
   onUpdate: (thread: Thread) => void;
   apiKey: string;
+  selectedModel: GeminiModel;
 }
 
 // Function to convert URLs in text to clickable links
@@ -36,32 +38,92 @@ const linkifyText = (text: string) => {
   });
 };
 
-export default function ThreadView({ thread, onBack, onUpdate, apiKey }: ThreadViewProps) {
+export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedModel }: ThreadViewProps) {
   const [title, setTitle] = useState(thread.title);
-  const [newNote, setNewNote] = useState('');
+  const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState('');
+  const [currentNote, setCurrentNote] = useState('');
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'title' | 'draft' | null>(null);
+  const sidebarTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const savedIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const addNote = async (content: string, useAI: boolean = false) => {
-    if (!content.trim()) return;
+  // Load draft from storage when thread changes
+  useEffect(() => {
+    chrome.storage.local.get([`draft_${thread.id}`], (result) => {
+      const draft = result[`draft_${thread.id}`];
+      if (draft) {
+        setCurrentNote(draft);
+      } else {
+        setCurrentNote('');
+      }
+    });
+  }, [thread.id]);
 
-    if (useAI && apiKey) {
-      setIsGenerating(true);
-      try {
-        // AI enhancement logic here
-        setIsGenerating(false);
-      } catch (error) {
-        console.error('Error generating AI response:', error);
-        setIsGenerating(false);
-        return;
+  // Auto-save draft to storage
+  useEffect(() => {
+    if (!editingNoteId) {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      
+      if (currentNote.trim()) {
+        autoSaveTimeoutRef.current = setTimeout(() => {
+          chrome.storage.local.set({ [`draft_${thread.id}`]: currentNote });
+          // Show saved indicator
+          setSaveStatus('draft');
+          // Clear the indicator after 2 seconds
+          if (savedIndicatorTimeoutRef.current) {
+            clearTimeout(savedIndicatorTimeoutRef.current);
+          }
+          savedIndicatorTimeoutRef.current = setTimeout(() => {
+            setSaveStatus(null);
+          }, 2000);
+        }, 1500); // Auto-save after 1.5 seconds of no typing
       }
     }
+    
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      if (savedIndicatorTimeoutRef.current) {
+        clearTimeout(savedIndicatorTimeoutRef.current);
+      }
+    };
+  }, [currentNote, thread.id, editingNoteId]);
+
+  // Update title when thread changes
+  useEffect(() => {
+    setTitle(thread.title);
+  }, [thread.title]);
+
+  // Handle title save on blur
+  const handleTitleBlur = () => {
+    if (title !== thread.title) {
+      onUpdate({ ...thread, title });
+      setSaveStatus('title');
+      // Clear the indicator after 2 seconds
+      if (savedIndicatorTimeoutRef.current) {
+        clearTimeout(savedIndicatorTimeoutRef.current);
+      }
+      savedIndicatorTimeoutRef.current = setTimeout(() => {
+        setSaveStatus(null);
+      }, 2000);
+    }
+  };
+
+  // Function to submit the note
+  const submitNote = () => {
+    if (!currentNote.trim()) return;
 
     const timestamp = new Date().toISOString();
     const newNoteObj: Note = {
       id: crypto.randomUUID(),
-      content: content.trim(),
+      content: currentNote.trim(),
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -73,7 +135,151 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey }: ThreadV
     };
 
     onUpdate(updatedThread);
-    setNewNote('');
+    setCurrentNote('');
+    // Clear the draft from storage
+    chrome.storage.local.remove([`draft_${thread.id}`]);
+  };
+
+  // Handle sidebar hover
+  const handleSidebarMouseEnter = () => {
+    if (sidebarTimeoutRef.current) {
+      clearTimeout(sidebarTimeoutRef.current);
+    }
+    setIsSidebarExpanded(true);
+  };
+
+  const handleSidebarMouseLeave = () => {
+    sidebarTimeoutRef.current = setTimeout(() => {
+      setIsSidebarExpanded(false);
+    }, 300); // Small delay before collapsing
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sidebarTimeoutRef.current) {
+        clearTimeout(sidebarTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const askAI = async (prompt: string) => {
+    if (!prompt.trim() || !apiKey) return;
+
+    setIsGenerating(true);
+    console.log('Starting AI request with prompt:', prompt);
+    console.log('Using model:', selectedModel);
+    
+    try {
+      // Initialize Gemini API
+      const genAI = new GoogleGenerativeAI(apiKey);
+      console.log('Initialized Gemini API');
+      
+      const model = genAI.getGenerativeModel({ model: selectedModel });
+      console.log('Got model instance');
+
+      const timestamp = new Date().toISOString();
+      const noteId = crypto.randomUUID();
+      
+      // Create initial note with the question
+      const newNoteObj: Note = {
+        id: noteId,
+        content: `Q: ${prompt}\n\nA: Generating response...`,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+
+      // Add the note to show the question immediately
+      const updatedThread = {
+        ...thread,
+        notes: [...thread.notes, newNoteObj],
+        updatedAt: timestamp,
+      };
+      onUpdate(updatedThread);
+      console.log('Added initial note');
+
+      // Prepare context from existing notes
+      const notesContext = thread.notes
+        .filter(note => note.id !== noteId) // Exclude the current question
+        .map(note => note.content)
+        .join('\n\n');
+      
+      // Format prompt for Flash model
+      const promptText = `Context from existing notes:\n${notesContext}\n\nUser question: ${prompt}\n\nPlease provide a concise response based on the context above.`;
+
+      console.log('Sending request to Gemini...');
+      
+      // Stream the AI response
+      const result = await model.generateContentStream([{ text: promptText }]);
+      console.log('Got stream response');
+      
+      let fullResponse = '';
+      let currentThread = { ...thread }; // Keep track of current thread state
+      
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        console.log('Received chunk:', chunkText);
+        fullResponse += chunkText;
+        
+        // Update the note with the accumulated response
+        const updatedNoteObj: Note = {
+          id: noteId,
+          content: `Q: ${prompt}\n\nA: ${fullResponse}`,
+          createdAt: timestamp,
+          updatedAt: new Date().toISOString()
+        };
+        console.log('Created updated note object:', updatedNoteObj);
+
+        // Update using the current thread state
+        const noteExists = currentThread.notes.some(note => note.id === noteId);
+        console.log('Note status:', {
+          noteId,
+          exists: noteExists,
+          currentNotesCount: currentThread.notes.length,
+          updatedNoteContent: updatedNoteObj.content
+        });
+
+        const threadWithResponse = {
+          ...currentThread,
+          notes: noteExists
+            ? currentThread.notes.map(note => 
+                note.id === noteId ? updatedNoteObj : note
+              )
+            : [...currentThread.notes, updatedNoteObj],
+          updatedAt: new Date().toISOString()
+        };
+        
+        console.log('Thread update:', {
+          beforeCount: currentThread.notes.length,
+          afterCount: threadWithResponse.notes.length,
+          updatedNote: threadWithResponse.notes.find(n => n.id === noteId)?.content
+        });
+        
+        // Update the current thread state
+        currentThread = threadWithResponse;
+        onUpdate(threadWithResponse);
+      }
+
+      console.log('Completed response:', fullResponse);
+      setAiPrompt('');
+    } catch (error) {
+      console.error('Error details:', error);
+      // Update the note to show the error
+      const errorNote: Note = {
+        id: crypto.randomUUID(),
+        content: `Q: ${prompt}\n\nA: Error generating response. Please check the console for details and try again.`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      const threadWithError = {
+        ...thread,
+        notes: [...thread.notes, errorNote],
+        updatedAt: new Date().toISOString()
+      };
+      onUpdate(threadWithError);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const updateNote = (noteId: string, newContent: string) => {
@@ -91,6 +297,17 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey }: ThreadV
     setEditingNoteId(null);
   };
 
+  const deleteNote = (noteId: string) => {
+    const updatedThread = {
+      ...thread,
+      notes: thread.notes.filter(note => note.id !== noteId),
+      updatedAt: new Date().toISOString(),
+    };
+    onUpdate(updatedThread);
+    setEditingNoteId(null);
+    setEditedContent('');
+  };
+
   return (
     <div className="flex flex-col h-full">
       <header className="p-4 border-b border-gray-200">
@@ -101,107 +318,226 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey }: ThreadV
           >
             <ChevronLeft size={20} />
           </button>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              onUpdate({ ...thread, title: e.target.value });
-            }}
-            className="flex-1 text-lg font-semibold bg-transparent focus:outline-none"
-            placeholder="Thread Title"
-          />
+          <div className="flex-1 flex items-center gap-2">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={handleTitleBlur}
+              className="flex-1 text-lg font-semibold bg-transparent focus:outline-none"
+              placeholder="Thread Title"
+            />
+            <div
+              className={`flex items-center gap-1.5 text-sm text-gray-500 transition-opacity duration-300 ${
+                saveStatus ? 'opacity-100' : 'opacity-0'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span className="text-xs">
+                {saveStatus === 'title' ? 'Title saved' : 'Draft saved'}
+              </span>
+            </div>
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {thread.notes.map((note) => (
-          <div 
-            key={note.id} 
-            className="group relative bg-gray-50 rounded-lg p-4 max-w-3xl mx-auto hover:bg-gray-100 transition-colors"
-          >
-            {editingNoteId === note.id ? (
-              <div className="space-y-3">
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main notes panel */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {/* Current note input */}
+            {!editingNoteId && (
+              <div className="bg-white rounded-lg p-4 max-w-3xl mx-auto border border-gray-200">
                 <textarea
-                  value={editedContent}
-                  onChange={(e) => setEditedContent(e.target.value)}
-                  className="w-full p-2 text-base bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={Math.max(3, editedContent.split('\n').length)}
-                  autoFocus
+                  value={currentNote}
+                  onChange={(e) => setCurrentNote(e.target.value)}
+                  placeholder="Start typing your note..."
+                  className="w-full min-h-[100px] text-base bg-transparent border-none focus:outline-none resize-none"
+                  rows={Math.max(3, currentNote.split('\n').length)}
                 />
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingNoteId(null);
-                      setEditedContent('');
-                    }}
-                    className="p-1.5 text-gray-600 hover:text-gray-900 bg-white rounded-full hover:bg-gray-50 border border-gray-200"
-                  >
-                    <X size={16} />
-                  </button>
-                  <button
-                    onClick={() => updateNote(note.id, editedContent)}
-                    className="p-1.5 text-blue-600 hover:text-blue-700 bg-white rounded-full hover:bg-blue-50 border border-blue-200"
-                  >
-                    <Check size={16} />
-                  </button>
-                </div>
+                {currentNote.trim() && (
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={submitNote}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Save Note
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <>
-                <p className="text-gray-900 text-base whitespace-pre-wrap leading-relaxed">
-                  {linkifyText(note.content)}
-                </p>
-                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => {
-                      setEditingNoteId(note.id);
-                      setEditedContent(note.content);
-                    }}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 bg-white rounded-full hover:bg-gray-50 border border-gray-200 shadow-sm"
-                    title="Edit note"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  {new Date(note.createdAt).toLocaleString()}
-                  {note.updatedAt !== note.createdAt && ' (edited)'}
-                </p>
-              </>
             )}
-          </div>
-        ))}
-      </div>
 
-      <div className="p-4 border-t border-gray-200 bg-white">
-        <div className="flex gap-3 max-w-3xl mx-auto">
-          <textarea
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            placeholder="Type your note..."
-            className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
-            rows={4}
-          />
-          <div className="flex flex-col gap-2 justify-end">
-            {apiKey && (
+            {/* Existing notes */}
+            {thread.notes
+              .filter(note => !note.content.includes('Q:') || !note.content.includes('A:'))
+              .map((note) => (
+              <div 
+                key={note.id} 
+                className="group relative bg-gray-50 rounded-lg p-4 max-w-3xl mx-auto hover:bg-gray-100 transition-colors"
+              >
+                {editingNoteId === note.id ? (
+                  <div className="space-y-3">
+                    <textarea
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      className="w-full p-2 text-base bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      rows={Math.max(3, editedContent.split('\n').length)}
+                      autoFocus
+                    />
+                    <div className="flex justify-between items-center">
+                      <button
+                        onClick={() => deleteNote(note.id)}
+                        className="p-1.5 text-red-600 hover:text-red-700 bg-white rounded-full hover:bg-red-50 border border-red-200"
+                        title="Delete note"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        </svg>
+                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingNoteId(null);
+                            setEditedContent('');
+                          }}
+                          className="p-1.5 text-gray-600 hover:text-gray-900 bg-white rounded-full hover:bg-gray-50 border border-gray-200"
+                        >
+                          <X size={16} />
+                        </button>
+                        <button
+                          onClick={() => updateNote(note.id, editedContent)}
+                          className="p-1.5 text-blue-600 hover:text-blue-700 bg-white rounded-full hover:bg-blue-50 border border-blue-200"
+                        >
+                          <Check size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-gray-900 text-base whitespace-pre-wrap leading-relaxed">
+                      {linkifyText(note.content)}
+                    </p>
+                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => {
+                          setEditingNoteId(note.id);
+                          setEditedContent(note.content);
+                        }}
+                        className="p-1.5 text-gray-500 hover:text-gray-700 bg-white rounded-full hover:bg-gray-50 border border-gray-200 shadow-sm"
+                        title="Edit note"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(note.createdAt).toLocaleString()}
+                      {note.updatedAt !== note.createdAt && ' (edited)'}
+                    </p>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* AI Chat Interface */}
+          <div className="p-4 border-t border-gray-200 bg-white">
+            <div className="flex gap-3 max-w-3xl mx-auto">
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder={apiKey ? "Ask AI about your notes..." : "Add API key in settings to enable AI features"}
+                className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={2}
+                disabled={!apiKey}
+              />
               <button
-                onClick={() => addNote(newNote, true)}
-                disabled={!newNote.trim() || isGenerating}
-                className="p-2.5 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Enhance with AI"
+                onClick={() => askAI(aiPrompt)}
+                disabled={!aiPrompt.trim() || isGenerating || !apiKey}
+                className="p-2.5 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors self-end"
+                title="Ask AI"
               >
                 <Sparkles size={20} />
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* AI Conversation Sidebar */}
+        <div 
+          className={`border-l border-gray-200 flex flex-col bg-gray-50 transition-all duration-300 ease-in-out ${
+            isSidebarExpanded ? 'w-[400px]' : 'w-[50px] cursor-pointer'
+          }`}
+          onMouseEnter={handleSidebarMouseEnter}
+          onMouseLeave={handleSidebarMouseLeave}
+        >
+          <div className={`p-4 border-b border-gray-200 bg-white flex items-center ${
+            isSidebarExpanded ? 'justify-between' : 'justify-center'
+          }`}>
+            {isSidebarExpanded ? (
+              <h2 className="text-lg font-semibold text-gray-900">AI Conversation</h2>
+            ) : (
+              <Sparkles size={20} className="text-gray-600" />
             )}
-            <button
-              onClick={() => addNote(newNote)}
-              disabled={!newNote.trim() || isGenerating}
-              className="p-2.5 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Send"
-            >
-              <Send size={20} />
-            </button>
+          </div>
+          <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${
+            isSidebarExpanded ? 'opacity-100' : 'opacity-0'
+          } transition-opacity duration-200`}>
+            {thread.notes
+              .filter(note => {
+                const hasQAndA = note.content.includes('Q:') && note.content.includes('A:');
+                console.log('Filtering note:', {
+                  id: note.id,
+                  hasQAndA,
+                  contentLength: note.content.length,
+                  firstLine: note.content.split('\n')[0]
+                });
+                return hasQAndA;
+              })
+              .map((note) => {
+                const [question, answer] = note.content.split('\n\nA:');
+                console.log('Rendering conversation note:', {
+                  id: note.id,
+                  questionLength: question?.length,
+                  answerLength: answer?.length,
+                  fullContent: note.content
+                });
+                
+                return (
+                  <div key={note.id} className="space-y-4">
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <p className="text-sm font-medium text-blue-800">
+                        {question?.substring(2)}
+                      </p>
+                    </div>
+                    {answer && (
+                      <div className="bg-white rounded-lg p-3 shadow-sm">
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {answer.trim()}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-2">
+                          {new Date(note.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </div>
       </div>

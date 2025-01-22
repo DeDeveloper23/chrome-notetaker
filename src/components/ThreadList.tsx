@@ -10,44 +10,35 @@ interface ThreadListProps {
 
 export default function ThreadList({ threads, onSelect, onDelete }: ThreadListProps) {
   return (
-    <div className="flex-1 overflow-y-auto">
-      {threads.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full text-gray-500">
-          <p>No notes yet</p>
-          <p className="text-sm">Create a new thread to get started</p>
-        </div>
-      ) : (
-        <div className="divide-y divide-gray-200">
-          {threads.map((thread) => (
-            <div
-              key={thread.id}
-              className="group flex items-center justify-between p-4 hover:bg-gray-50 cursor-pointer"
-              onClick={() => onSelect(thread.id)}
-            >
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-medium text-gray-900 truncate">
-                  {thread.title}
-                </h3>
-                <p className="text-sm text-gray-500 truncate">
-                  {thread.notes[0]?.content.slice(0, 60) || 'Empty thread'}
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {new Date(thread.updatedAt).toLocaleDateString()}
-                </p>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(thread.id);
-                }}
-                className="p-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Trash2 size={16} />
-              </button>
+    <div className="flex-1 overflow-y-auto p-4">
+      <div className="space-y-3">
+        {threads.map((thread) => (
+          <div
+            key={thread.id}
+            onClick={() => onSelect(thread.id)}
+            className="group flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-500 cursor-pointer"
+          >
+            <div className="min-w-0">
+              <h3 className="font-medium text-gray-900 truncate">
+                {thread.title || 'Untitled Thread'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {new Date(thread.updatedAt).toLocaleString()}
+              </p>
             </div>
-          ))}
-        </div>
-      )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(thread.id);
+              }}
+              className="p-1.5 text-gray-400 hover:text-red-600 rounded-full hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Delete thread"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

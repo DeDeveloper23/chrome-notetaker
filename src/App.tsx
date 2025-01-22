@@ -1,41 +1,69 @@
 /// <reference types="chrome"/>
-import React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, Settings as SettingsIcon, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Thread } from './types';
+import type { Thread, Settings as SettingsType } from './types';
 import ThreadList from './components/ThreadList';
 import ThreadView from './components/ThreadView';
 import Settings from './components/Settings';
 
 function App() {
   const [threads, setThreads] = useState<Thread[]>([]);
-  const [selectedThread, setSelectedThread] = useState<string | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState('');
+  const [settings, setSettings] = useState<SettingsType>({
+    apiKey: '',
+    selectedModel: 'gemini-1.5-flash'
+  });
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
 
   useEffect(() => {
     // Load threads from chrome.storage.local
-    chrome.storage.local.get(['threads', 'apiKey'], (result: { threads?: Thread[]; apiKey?: string }) => {
+    chrome.storage.local.get(['threads', 'settings'], (result) => {
       if (result.threads) {
         setThreads(result.threads);
       }
-      if (result.apiKey) {
-        setApiKey(result.apiKey);
+      if (result.settings) {
+        setSettings(result.settings);
       }
     });
   }, []);
 
-  const saveThreads = (updatedThreads: Thread[]) => {
-    setThreads(updatedThreads);
-    chrome.storage.local.set({ threads: updatedThreads });
+  useEffect(() => {
+    chrome.storage.local.set({ threads });
+  }, [threads]);
+
+  useEffect(() => {
+    chrome.storage.local.set({ settings });
+  }, [settings]);
+
+  const handleUpdateThread = (updatedThread: Thread) => {
+    setThreads(threads.map(thread => 
+      thread.id === updatedThread.id ? updatedThread : thread
+    ));
   };
 
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    chrome.storage.local.set({ apiKey: key });
+  const handleCreateThread = () => {
+    const timestamp = new Date().toISOString();
+    const newThread: Thread = {
+      id: crypto.randomUUID(),
+      title: 'New Thread',
+      notes: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    setThreads([newThread, ...threads]);
+    setSelectedThreadId(newThread.id);
   };
+
+  const handleDeleteThread = (threadId: string) => {
+    setThreads(threads.filter(thread => thread.id !== threadId));
+    if (selectedThreadId === threadId) {
+      setSelectedThreadId(null);
+    }
+  };
+
+  const selectedThread = threads.find(thread => thread.id === selectedThreadId);
 
   const filteredThreads = threads.filter(thread => 
     thread.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -59,17 +87,7 @@ function App() {
               <h1 className="text-xl font-semibold text-gray-900 whitespace-nowrap">Notes</h1>
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    const newThread: Thread = {
-                      id: crypto.randomUUID(),
-                      title: 'New Thread',
-                      notes: [],
-                      createdAt: new Date().toISOString(),
-                      updatedAt: new Date().toISOString()
-                    };
-                    saveThreads([...threads, newThread]);
-                    setSelectedThread(newThread.id);
-                  }}
+                  onClick={handleCreateThread}
                   className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
                 >
                   <Plus size={20} />
@@ -95,10 +113,8 @@ function App() {
           </header>
           <ThreadList
             threads={filteredThreads}
-            onSelect={setSelectedThread}
-            onDelete={(threadId) => {
-              saveThreads(threads.filter(t => t.id !== threadId));
-            }}
+            onSelect={setSelectedThreadId}
+            onDelete={handleDeleteThread}
           />
         </div>
         <button
@@ -114,21 +130,17 @@ function App() {
       <div className="flex-1">
         {showSettings ? (
           <Settings
-            apiKey={apiKey}
-            onSave={saveApiKey}
+            settings={settings}
+            onUpdate={setSettings}
             onClose={() => setShowSettings(false)}
           />
         ) : selectedThread ? (
           <ThreadView
-            thread={threads.find(t => t.id === selectedThread)!}
-            onBack={() => setSelectedThread(null)}
-            onUpdate={(updatedThread) => {
-              const newThreads = threads.map(t => 
-                t.id === updatedThread.id ? updatedThread : t
-              );
-              saveThreads(newThreads);
-            }}
-            apiKey={apiKey}
+            thread={selectedThread}
+            onBack={() => setSelectedThreadId(null)}
+            onUpdate={handleUpdateThread}
+            apiKey={settings.apiKey}
+            selectedModel={settings.selectedModel}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
