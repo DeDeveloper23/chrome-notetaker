@@ -1,3 +1,7 @@
+
+
+
+
 # Ascend Notetaker Chrome Extension
 
 A beautiful and powerful note-taking Chrome extension with AI capabilities. Take notes directly in your browser with a clean, modern interface and optional AI-powered enhancements.
@@ -11,6 +15,9 @@ A beautiful and powerful note-taking Chrome extension with AI capabilities. Take
 - 🔗 Automatic URL detection and clickable links
 - 🤖 Optional AI enhancement capabilities (requires API key)
 - 💾 Automatic saving and sync using Chrome storage
+
+https://github.com/user-attachments/assets/a8259b01-7083-4e0a-b151-ad06a513962d
+
 
 ## Installation
 
