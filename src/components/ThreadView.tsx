@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Sparkles, Pencil, Check, X } from 'lucide-react';
+import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Thread, Note, GeminiModel } from '../types';
 
@@ -46,6 +46,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const [editedContent, setEditedContent] = useState('');
   const [currentNote, setCurrentNote] = useState('');
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isSidebarPinned, setIsSidebarPinned] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'title' | 'draft' | null>(null);
   const sidebarTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -142,16 +143,28 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
 
   // Handle sidebar hover
   const handleSidebarMouseEnter = () => {
-    if (sidebarTimeoutRef.current) {
-      clearTimeout(sidebarTimeoutRef.current);
+    if (!isSidebarPinned) {
+      if (sidebarTimeoutRef.current) {
+        clearTimeout(sidebarTimeoutRef.current);
+      }
+      setIsSidebarExpanded(true);
     }
-    setIsSidebarExpanded(true);
   };
 
   const handleSidebarMouseLeave = () => {
-    sidebarTimeoutRef.current = setTimeout(() => {
-      setIsSidebarExpanded(false);
-    }, 300); // Small delay before collapsing
+    if (!isSidebarPinned) {
+      sidebarTimeoutRef.current = setTimeout(() => {
+        setIsSidebarExpanded(false);
+      }, 300); // Small delay before collapsing
+    }
+  };
+
+  // Toggle pin state
+  const togglePin = () => {
+    setIsSidebarPinned(!isSidebarPinned);
+    if (!isSidebarPinned) {
+      setIsSidebarExpanded(true);
+    }
   };
 
   useEffect(() => {
@@ -309,8 +322,8 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <header className="p-4 border-b border-gray-200">
+    <div className="flex flex-col h-full overflow-hidden">
+      <header className="p-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center gap-2 mb-3">
           <button
             onClick={onBack}
@@ -343,9 +356,9 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-w-0 overflow-hidden">
         {/* Main notes panel */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {/* Current note input */}
             {!editingNoteId && (
@@ -456,7 +469,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
           </div>
 
           {/* AI Chat Interface */}
-          <div className="p-4 border-t border-gray-200 bg-white">
+          <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
             <div className="flex gap-3 max-w-3xl mx-auto">
               <textarea
                 value={aiPrompt}
@@ -480,54 +493,52 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
 
         {/* AI Conversation Sidebar */}
         <div 
-          className={`border-l border-gray-200 flex flex-col bg-gray-50 transition-all duration-300 ease-in-out ${
-            isSidebarExpanded ? 'w-[400px]' : 'w-[50px] cursor-pointer'
+          className={`border-l border-gray-200 flex flex-col bg-gray-50 transition-all duration-300 ease-in-out min-w-[50px] flex-shrink-0 ${
+            isSidebarExpanded || isSidebarPinned ? 'w-[400px]' : 'w-[50px]'
           }`}
           onMouseEnter={handleSidebarMouseEnter}
           onMouseLeave={handleSidebarMouseLeave}
         >
           <div className={`p-4 border-b border-gray-200 bg-white flex items-center ${
-            isSidebarExpanded ? 'justify-between' : 'justify-center'
+            isSidebarExpanded || isSidebarPinned ? 'justify-between' : 'justify-center'
           }`}>
-            {isSidebarExpanded ? (
-              <h2 className="text-lg font-semibold text-gray-900">AI Conversation</h2>
+            {(isSidebarExpanded || isSidebarPinned) ? (
+              <>
+                <div className="flex items-center justify-between w-full min-w-0">
+                  <h2 className="text-lg font-semibold text-gray-900 truncate pr-2">AI Conversation</h2>
+                  <button
+                    onClick={togglePin}
+                    className="p-1.5 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
+                    title={isSidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
+                  >
+                    {isSidebarPinned ? <PinOff size={16} /> : <Pin size={16} />}
+                  </button>
+                </div>
+              </>
             ) : (
               <Sparkles size={20} className="text-gray-600" />
             )}
           </div>
           <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${
-            isSidebarExpanded ? 'opacity-100' : 'opacity-0'
+            isSidebarExpanded || isSidebarPinned ? 'opacity-100' : 'opacity-0'
           } transition-opacity duration-200`}>
             {thread.notes
               .filter(note => {
                 const hasQAndA = note.content.includes('Q:') && note.content.includes('A:');
-                console.log('Filtering note:', {
-                  id: note.id,
-                  hasQAndA,
-                  contentLength: note.content.length,
-                  firstLine: note.content.split('\n')[0]
-                });
                 return hasQAndA;
               })
               .map((note) => {
                 const [question, answer] = note.content.split('\n\nA:');
-                console.log('Rendering conversation note:', {
-                  id: note.id,
-                  questionLength: question?.length,
-                  answerLength: answer?.length,
-                  fullContent: note.content
-                });
-                
                 return (
-                  <div key={note.id} className="space-y-4">
+                  <div key={note.id} className="space-y-4 min-w-0">
                     <div className="bg-blue-50 rounded-lg p-3">
-                      <p className="text-sm font-medium text-blue-800">
+                      <p className="text-sm font-medium text-blue-800 break-words">
                         {question?.substring(2)}
                       </p>
                     </div>
                     {answer && (
                       <div className="bg-white rounded-lg p-3 shadow-sm">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
                           {answer.trim()}
                         </p>
                         <p className="text-xs text-gray-400 mt-2">
@@ -538,6 +549,12 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                   </div>
                 );
               })}
+            {thread.notes.filter(note => note.content.includes('Q:') && note.content.includes('A:')).length === 0 && (
+              <div className="text-center text-gray-500 py-8">
+                <p>No AI conversations yet</p>
+                <p className="text-sm mt-1">Ask a question below to start a conversation</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
