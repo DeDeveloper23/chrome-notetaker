@@ -11,6 +11,7 @@ export type Thread = {
   notes: Note[];
   createdAt: string;
   updatedAt: string;
+  starred?: boolean;
 };
 
 export type GeminiModel = 

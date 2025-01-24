@@ -52,6 +52,7 @@ function App() {
       notes: [],
       createdAt: timestamp,
       updatedAt: timestamp,
+      starred: false,
     };
     setThreads([newThread, ...threads]);
     setSelectedThreadId(newThread.id);
@@ -82,6 +83,14 @@ function App() {
 
     // Store the deleted thread and timeout
     setDeletedThread({ thread: threadToDelete, timeoutId });
+  };
+
+  const handleToggleStar = (threadId: string) => {
+    setThreads(threads.map(thread => 
+      thread.id === threadId
+        ? { ...thread, starred: !thread.starred, updatedAt: new Date().toISOString() }
+        : thread
+    ));
   };
 
   const handleUndoDelete = () => {
@@ -149,6 +158,7 @@ function App() {
             threads={filteredThreads}
             onSelect={setSelectedThreadId}
             onDelete={handleDeleteThread}
+            onToggleStar={handleToggleStar}
           />
         </div>
         <button
