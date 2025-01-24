@@ -22,6 +22,7 @@ export type GeminiModel =
 export interface Settings {
   apiKey: string;
   selectedModel: GeminiModel;
+  darkMode: boolean;
 }
 
 export const GEMINI_MODELS: { value: GeminiModel; label: string; description: string }[] = [

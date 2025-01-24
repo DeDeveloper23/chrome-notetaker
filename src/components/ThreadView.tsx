@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff } from 'lucide-react';
+import { ChevronLeft, Sparkles, Pencil, X, Pin, PinOff } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Thread, Note, GeminiModel } from '../types';
 
@@ -140,40 +140,6 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     // Clear the draft from storage
     chrome.storage.local.remove([`draft_${thread.id}`]);
   };
-
-  // Handle sidebar hover
-  const handleSidebarMouseEnter = () => {
-    if (!isSidebarPinned) {
-      if (sidebarTimeoutRef.current) {
-        clearTimeout(sidebarTimeoutRef.current);
-      }
-      setIsSidebarExpanded(true);
-    }
-  };
-
-  const handleSidebarMouseLeave = () => {
-    if (!isSidebarPinned) {
-      sidebarTimeoutRef.current = setTimeout(() => {
-        setIsSidebarExpanded(false);
-      }, 300); // Small delay before collapsing
-    }
-  };
-
-  // Toggle pin state
-  const togglePin = () => {
-    setIsSidebarPinned(!isSidebarPinned);
-    if (!isSidebarPinned) {
-      setIsSidebarExpanded(true);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (sidebarTimeoutRef.current) {
-        clearTimeout(sidebarTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const askAI = async (prompt: string) => {
     if (!prompt.trim() || !apiKey) return;
@@ -321,194 +287,219 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     setEditedContent('');
   };
 
+  // Handle sidebar hover
+  const handleSidebarMouseEnter = () => {
+    if (!isSidebarPinned) {
+      if (sidebarTimeoutRef.current) {
+        clearTimeout(sidebarTimeoutRef.current);
+      }
+      setIsSidebarExpanded(true);
+    }
+  };
+
+  const handleSidebarMouseLeave = () => {
+    if (!isSidebarPinned) {
+      sidebarTimeoutRef.current = setTimeout(() => {
+        setIsSidebarExpanded(false);
+      }, 300); // Small delay before collapsing
+    }
+  };
+
+  // Toggle pin state
+  const togglePin = () => {
+    setIsSidebarPinned(!isSidebarPinned);
+    if (!isSidebarPinned) {
+      setIsSidebarExpanded(true);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sidebarTimeoutRef.current) {
+        clearTimeout(sidebarTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <header className="p-4 border-b border-gray-200 flex-shrink-0">
-        <div className="flex items-center gap-2 mb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className="p-1 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
+            className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <ChevronLeft size={20} />
           </button>
-          <div className="flex-1 flex items-center gap-2">
+          <div className="min-w-0 flex-1">
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={handleTitleBlur}
-              className="flex-1 text-lg font-semibold bg-transparent focus:outline-none"
               placeholder="Thread Title"
+              className="w-full text-lg font-semibold bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none"
             />
-            <div
-              className={`flex items-center gap-1.5 text-sm text-gray-500 transition-opacity duration-300 ${
-                saveStatus ? 'opacity-100' : 'opacity-0'
-              }`}
-            >
-              <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span className="text-xs">
-                {saveStatus === 'title' ? 'Title saved' : 'Draft saved'}
-              </span>
-            </div>
           </div>
         </div>
-      </header>
+        {saveStatus === 'title' && (
+          <span className="text-sm text-green-600 dark:text-green-400">Saved</span>
+        )}
+      </div>
 
       <div className="flex flex-1 min-w-0 overflow-hidden">
-        {/* Main notes panel */}
+        {/* Main Content */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {/* Current note input */}
-            {!editingNoteId && (
-              <div className="bg-white rounded-lg p-4 max-w-3xl mx-auto border border-gray-200">
-                <textarea
-                  value={currentNote}
-                  onChange={(e) => setCurrentNote(e.target.value)}
-                  placeholder="Start typing your note..."
-                  className="w-full min-h-[100px] text-base bg-transparent border-none focus:outline-none resize-none"
-                  rows={Math.max(3, currentNote.split('\n').length)}
-                />
-                {currentNote.trim() && (
-                  <div className="flex justify-end mt-2">
-                    <button
-                      onClick={submitNote}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Save Note
-                    </button>
-                  </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Current Note Input */}
+            <div className="relative bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <textarea
+                value={currentNote}
+                onChange={(e) => setCurrentNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitNote();
+                  }
+                }}
+                placeholder="Type a note..."
+                className="w-full min-h-[100px] p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+                rows={3}
+              />
+              <div className="flex justify-end items-center gap-3 mt-3">
+                {saveStatus === 'draft' && (
+                  <span className="text-sm text-green-600 dark:text-green-400">Saved</span>
                 )}
+                <button
+                  onClick={submitNote}
+                  disabled={!currentNote.trim()}
+                  className={`px-4 py-2 rounded-lg ${
+                    currentNote.trim()
+                      ? 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Save Note
+                </button>
               </div>
-            )}
+            </div>
 
-            {/* Existing notes */}
+            {/* Existing Notes */}
             {thread.notes
               .filter(note => !note.content.includes('Q:') || !note.content.includes('A:'))
               .map((note) => (
-              <div 
-                key={note.id} 
-                className="group relative bg-gray-50 rounded-lg p-4 max-w-3xl mx-auto hover:bg-gray-100 transition-colors"
-              >
-                {editingNoteId === note.id ? (
-                  <div className="space-y-3">
-                    <textarea
-                      value={editedContent}
-                      onChange={(e) => setEditedContent(e.target.value)}
-                      className="w-full p-2 text-base bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={Math.max(3, editedContent.split('\n').length)}
-                      autoFocus
-                    />
-                    <div className="flex justify-between items-center">
-                      <button
-                        onClick={() => deleteNote(note.id)}
-                        className="p-1.5 text-red-600 hover:text-red-700 bg-white rounded-full hover:bg-red-50 border border-red-200"
-                        title="Delete note"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M3 6h18" />
-                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                        </svg>
-                      </button>
-                      <div className="flex gap-2">
+                <div
+                  key={note.id}
+                  className="group relative bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+                >
+                  {editingNoteId === note.id ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={editedContent}
+                        onChange={(e) => setEditedContent(e.target.value)}
+                        className="w-full min-h-[100px] p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white"
+                      />
+                      <div className="flex justify-end gap-2">
                         <button
-                          onClick={() => {
-                            setEditingNoteId(null);
-                            setEditedContent('');
-                          }}
-                          className="p-1.5 text-gray-600 hover:text-gray-900 bg-white rounded-full hover:bg-gray-50 border border-gray-200"
+                          onClick={() => setEditingNoteId(null)}
+                          className="px-3 py-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                         >
-                          <X size={16} />
+                          Cancel
                         </button>
                         <button
-                          onClick={() => updateNote(note.id, editedContent)}
-                          className="p-1.5 text-blue-600 hover:text-blue-700 bg-white rounded-full hover:bg-blue-50 border border-blue-200"
+                          onClick={() => {
+                            updateNote(note.id, editedContent);
+                            setEditingNoteId(null);
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 dark:bg-blue-500 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-600"
                         >
-                          <Check size={16} />
+                          Save
                         </button>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-gray-900 text-base whitespace-pre-wrap leading-relaxed">
-                      {linkifyText(note.content)}
-                    </p>
-                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => {
-                          setEditingNoteId(note.id);
-                          setEditedContent(note.content);
-                        }}
-                        className="p-1.5 text-gray-500 hover:text-gray-700 bg-white rounded-full hover:bg-gray-50 border border-gray-200 shadow-sm"
-                        title="Edit note"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2">
-                      {new Date(note.createdAt).toLocaleString()}
-                      {note.updatedAt !== note.createdAt && ' (edited)'}
-                    </p>
-                  </>
-                )}
-              </div>
-            ))}
+                  ) : (
+                    <>
+                      <div className="whitespace-pre-wrap text-gray-900 dark:text-white">
+                        {linkifyText(note.content)}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                        <span>{new Date(note.createdAt).toLocaleString()}</span>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setEditingNoteId(note.id);
+                              setEditedContent(note.content);
+                            }}
+                            className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => deleteNote(note.id)}
+                            className="p-1 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-500 rounded"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
           </div>
 
-          {/* AI Chat Interface */}
-          <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
-            <div className="flex gap-3 max-w-3xl mx-auto">
+          {/* AI Chat Input */}
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            <div className="flex gap-3">
               <textarea
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 placeholder={apiKey ? "Ask AI about your notes..." : "Add API key in settings to enable AI features"}
-                className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 resize-none"
                 rows={2}
                 disabled={!apiKey}
               />
               <button
                 onClick={() => askAI(aiPrompt)}
-                disabled={!aiPrompt.trim() || isGenerating || !apiKey}
-                className="p-2.5 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors self-end"
+                disabled={isGenerating || !aiPrompt.trim() || !apiKey}
+                className={`p-3 rounded-lg flex items-center gap-2 ${
+                  isGenerating || !aiPrompt.trim() || !apiKey
+                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600'
+                }`}
                 title="Ask AI"
               >
                 <Sparkles size={20} />
+                <span>{isGenerating ? 'Generating...' : 'Ask AI'}</span>
               </button>
             </div>
+            {!apiKey && (
+              <p className="text-sm text-red-500 dark:text-red-400 mt-2">
+                Please add your API key in settings
+              </p>
+            )}
           </div>
         </div>
 
         {/* AI Conversation Sidebar */}
         <div 
-          className={`border-l border-gray-200 flex flex-col bg-gray-50 transition-all duration-300 ease-in-out min-w-[50px] flex-shrink-0 ${
-            isSidebarExpanded || isSidebarPinned ? 'w-[400px]' : 'w-[50px]'
+          className={`border-l border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800 transition-all duration-300 ease-in-out ${
+            isSidebarExpanded ? 'w-[400px]' : 'w-[50px]'
           }`}
           onMouseEnter={handleSidebarMouseEnter}
           onMouseLeave={handleSidebarMouseLeave}
         >
-          <div className={`p-4 border-b border-gray-200 bg-white flex items-center ${
-            isSidebarExpanded || isSidebarPinned ? 'justify-between' : 'justify-center'
+          <div className={`p-4 border-b border-gray-200 dark:border-gray-700 flex items-center ${
+            isSidebarExpanded ? 'justify-between' : 'justify-center'
           }`}>
             {(isSidebarExpanded || isSidebarPinned) ? (
               <>
                 <div className="flex items-center justify-between w-full min-w-0">
-                  <h2 className="text-lg font-semibold text-gray-900 truncate pr-2">AI Conversation</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white truncate pr-2">AI Conversation</h2>
                   <button
                     onClick={togglePin}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
+                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
                     title={isSidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
                   >
                     {isSidebarPinned ? <PinOff size={16} /> : <Pin size={16} />}
@@ -516,32 +507,30 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                 </div>
               </>
             ) : (
-              <Sparkles size={20} className="text-gray-600" />
+              <Sparkles size={20} className="text-gray-600 dark:text-gray-400" />
             )}
           </div>
+
           <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${
-            isSidebarExpanded || isSidebarPinned ? 'opacity-100' : 'opacity-0'
+            isSidebarExpanded ? 'opacity-100' : 'opacity-0'
           } transition-opacity duration-200`}>
             {thread.notes
-              .filter(note => {
-                const hasQAndA = note.content.includes('Q:') && note.content.includes('A:');
-                return hasQAndA;
-              })
+              .filter(note => note.content.includes('Q:') && note.content.includes('A:'))
               .map((note) => {
                 const [question, answer] = note.content.split('\n\nA:');
                 return (
                   <div key={note.id} className="space-y-4 min-w-0">
-                    <div className="bg-blue-50 rounded-lg p-3">
-                      <p className="text-sm font-medium text-blue-800 break-words">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200 break-words">
                         {question?.substring(2)}
                       </p>
                     </div>
                     {answer && (
-                      <div className="bg-white rounded-lg p-3 shadow-sm">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                      <div className="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm">
+                        <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">
                           {answer.trim()}
                         </p>
-                        <p className="text-xs text-gray-400 mt-2">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
                           {new Date(note.createdAt).toLocaleString()}
                         </p>
                       </div>
@@ -550,7 +539,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                 );
               })}
             {thread.notes.filter(note => note.content.includes('Q:') && note.content.includes('A:')).length === 0 && (
-              <div className="text-center text-gray-500 py-8">
+              <div className="text-center text-gray-500 dark:text-gray-400 py-8">
                 <p>No AI conversations yet</p>
                 <p className="text-sm mt-1">Ask a question below to start a conversation</p>
               </div>
