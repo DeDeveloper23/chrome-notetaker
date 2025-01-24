@@ -1,10 +1,12 @@
 /// <reference types="chrome"/>
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Settings as SettingsIcon, ChevronLeft, ChevronRight, Undo2 } from 'lucide-react';
+import { Search, Plus, Settings as SettingsIcon, ChevronLeft, ChevronRight, Undo2, Command } from 'lucide-react';
 import type { Thread, Settings as SettingsType } from './types';
 import ThreadList from './components/ThreadList';
 import ThreadView from './components/ThreadView';
 import Settings from './components/Settings';
+import QuickActions from './components/QuickActions';
+import { ShortcutAction, handleShortcut, getModifierKey } from './utils/shortcuts';
 
 function App() {
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -17,6 +19,7 @@ function App() {
   });
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [deletedThread, setDeletedThread] = useState<{ thread: Thread; timeoutId: NodeJS.Timeout } | null>(null);
+  const [showQuickActions, setShowQuickActions] = useState(false);
 
   useEffect(() => {
     // Load threads from chrome.storage.local
@@ -106,6 +109,50 @@ function App() {
     }
   };
 
+  // Define shortcuts after function declarations
+  const shortcuts: ShortcutAction[] = [
+    {
+      key: 'k',
+      description: 'Show Quick Actions',
+      modifier: getModifierKey(),
+      action: () => setShowQuickActions(true)
+    },
+    {
+      key: 'n',
+      description: 'New Thread',
+      modifier: getModifierKey(),
+      action: handleCreateThread
+    },
+    {
+      key: ',',
+      description: 'Open Settings',
+      modifier: getModifierKey(),
+      action: () => setShowSettings(true)
+    },
+    {
+      key: 'f',
+      description: 'Search Notes',
+      modifier: getModifierKey(),
+      action: () => document.querySelector<HTMLInputElement>('input[type="text"]')?.focus()
+    },
+    {
+      key: 'b',
+      description: 'Go Back to Thread List',
+      modifier: getModifierKey(),
+      action: () => setSelectedThreadId(null)
+    }
+  ];
+
+  // Add keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      handleShortcut(e, shortcuts);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [shortcuts]);
+
   const selectedThread = threads.find(thread => thread.id === selectedThreadId);
 
   const filteredThreads = threads.filter(thread => 
@@ -131,15 +178,33 @@ function App() {
               <div className="flex gap-2">
                 <button
                   onClick={handleCreateThread}
-                  className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
+                  className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative group"
+                  title="New Thread"
                 >
                   <Plus size={20} />
+                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                    {shortcuts[1].modifier === 'cmd' ? '⌘' : 'Ctrl'} + N
+                  </span>
+                </button>
+                <button
+                  onClick={() => setShowQuickActions(true)}
+                  className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative group"
+                  title="Quick Actions"
+                >
+                  <Command size={20} />
+                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                    {shortcuts[0].modifier === 'cmd' ? '⌘' : 'Ctrl'} + K
+                  </span>
                 </button>
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
+                  className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative group"
+                  title="Settings"
                 >
                   <SettingsIcon size={20} />
+                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                    {shortcuts[2].modifier === 'cmd' ? '⌘' : 'Ctrl'} + ,
+                  </span>
                 </button>
               </div>
             </div>
@@ -209,6 +274,12 @@ function App() {
           )}
         </div>
       </div>
+
+      <QuickActions
+        shortcuts={shortcuts}
+        isOpen={showQuickActions}
+        onClose={() => setShowQuickActions(false)}
+      />
     </div>
   );
 }

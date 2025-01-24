@@ -1,7 +1,3 @@
-
-
-
-
 # Ascend Notetaker Chrome Extension
 
 A beautiful and powerful note-taking Chrome extension with AI capabilities. Take notes directly in your browser with a clean, modern interface and optional AI-powered enhancements.
@@ -15,6 +11,32 @@ A beautiful and powerful note-taking Chrome extension with AI capabilities. Take
 - 🔗 Automatic URL detection and clickable links
 - 🤖 Optional AI enhancement capabilities (requires API key)
 - 💾 Automatic saving and sync using Chrome storage
+
+## Usage
+
+### Keyboard Shortcuts
+- `⌘/Ctrl + K`: Open Quick Actions menu
+- `⌘/Ctrl + N`: Create new thread
+- `⌘/Ctrl + ,`: Open settings
+- `⌘/Ctrl + F`: Focus search
+- `⌘/Ctrl + B`: Go back to thread list
+
+### Thread Management
+- **Star Important Threads**: Click the star icon to pin important threads to the top
+- **Delete Threads**: Click the trash icon (with undo capability)
+- **Search**: Use the search bar to find threads and notes
+
+### Note Features
+- **Markdown Support**: Write notes using markdown syntax for formatting
+- **File Import**: Upload and extract text from PDF, DOCX, and TXT files
+- **AI Integration**: Ask questions about your notes using Gemini AI
+- **Save AI Responses**: Convert helpful AI responses into permanent notes
+
+### AI Conversation
+- **Context-Aware**: AI has access to your notes for better responses
+- **Real-time Streaming**: See AI responses as they're generated
+- **Markdown Formatting**: AI responses support rich text formatting
+- **Quick Save**: Save useful AI responses as regular notes with one click
 
 https://github.com/user-attachments/assets/a8259b01-7083-4e0a-b151-ad06a513962d
 
