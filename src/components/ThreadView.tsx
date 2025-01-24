@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff } from 'lucide-react';
+import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff, Upload, Loader2 } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Thread, Note, GeminiModel } from '../types';
+import { extractTextFromFile } from '../utils/fileExtractors';
 
 interface ThreadViewProps {
   thread: Thread;
@@ -51,6 +52,9 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const sidebarTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const savedIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load draft from storage when thread changes
   useEffect(() => {
@@ -321,6 +325,82 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     setEditedContent('');
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const fileArray = Array.from(files);
+    const progress: { [key: string]: number } = {};
+    fileArray.forEach(file => {
+      progress[file.name] = 0;
+    });
+    setUploadProgress(progress);
+
+    try {
+      for (const file of fileArray) {
+        try {
+          // Update progress to show started
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: 10
+          }));
+
+          const text = await extractTextFromFile(file);
+          
+          // Update progress to show text extracted
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: 50
+          }));
+
+          const timestamp = new Date().toISOString();
+          const newNoteObj: Note = {
+            id: crypto.randomUUID(),
+            content: `File: ${file.name}\n\n${text}`,
+            createdAt: timestamp,
+            updatedAt: timestamp
+          };
+
+          // Update thread with new note
+          const updatedThread = {
+            ...thread,
+            notes: [...thread.notes, newNoteObj],
+            updatedAt: timestamp,
+          };
+          onUpdate(updatedThread);
+
+          // Update progress to show completed
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: 100
+          }));
+
+          // Clear progress after a delay
+          setTimeout(() => {
+            setUploadProgress(prev => {
+              const newProgress = { ...prev };
+              delete newProgress[file.name];
+              return newProgress;
+            });
+          }, 2000);
+        } catch (error) {
+          console.error(`Error processing file ${file.name}:`, error);
+          // Show error in progress
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: -1
+          }));
+        }
+      }
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <header className="p-4 border-b border-gray-200 flex-shrink-0">
@@ -340,6 +420,28 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
               className="flex-1 text-lg font-semibold bg-transparent focus:outline-none"
               placeholder="Thread Title"
             />
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.docx,.pdf"
+                multiple
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative"
+                title="Upload files"
+              >
+                {isUploading ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : (
+                  <Upload size={20} />
+                )}
+              </button>
+            </div>
             <div
               className={`flex items-center gap-1.5 text-sm text-gray-500 transition-opacity duration-300 ${
                 saveStatus ? 'opacity-100' : 'opacity-0'
@@ -354,6 +456,34 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
             </div>
           </div>
         </div>
+        {/* Upload Progress */}
+        {Object.keys(uploadProgress).length > 0 && (
+          <div className="mt-2 space-y-2">
+            {Object.entries(uploadProgress).map(([fileName, progress]) => (
+              <div key={fileName} className="flex items-center gap-2">
+                <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      progress === -1
+                        ? 'bg-red-500'
+                        : progress === 100
+                        ? 'bg-green-500'
+                        : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${progress === -1 ? 100 : progress}%` }}
+                  />
+                </div>
+                <span className="text-xs text-gray-500 min-w-[60px]">
+                  {progress === -1
+                    ? 'Error'
+                    : progress === 100
+                    ? 'Done'
+                    : `${progress}%`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </header>
 
       <div className="flex flex-1 min-w-0 overflow-hidden">
@@ -537,10 +667,48 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                       </p>
                     </div>
                     {answer && (
-                      <div className="bg-white rounded-lg p-3 shadow-sm">
+                      <div className="bg-white rounded-lg p-3 shadow-sm group/message relative">
                         <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
                           {answer.trim()}
                         </p>
+                        <div className="absolute top-2 right-2 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              const timestamp = new Date().toISOString();
+                              const newNoteObj: Note = {
+                                id: crypto.randomUUID(),
+                                content: answer.trim(),
+                                createdAt: timestamp,
+                                updatedAt: timestamp,
+                              };
+                              const updatedThread = {
+                                ...thread,
+                                notes: [...thread.notes, newNoteObj],
+                                updatedAt: timestamp,
+                              };
+                              onUpdate(updatedThread);
+                            }}
+                            className="p-1.5 text-blue-600 hover:text-blue-700 bg-white rounded-full hover:bg-blue-50 border border-blue-200 shadow-sm flex items-center gap-1.5"
+                            title="Save as note"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                              <polyline points="17 21 17 13 7 13 7 21" />
+                              <polyline points="7 3 7 8 15 8" />
+                            </svg>
+                            <span className="text-xs">Save as Note</span>
+                          </button>
+                        </div>
                         <p className="text-xs text-gray-400 mt-2">
                           {new Date(note.createdAt).toLocaleString()}
                         </p>
