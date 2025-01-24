@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff, Upload, Loader2 } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Thread, Note, GeminiModel } from '../types';
 import { extractTextFromFile } from '../utils/fileExtractors';
 
@@ -11,33 +13,6 @@ interface ThreadViewProps {
   apiKey: string;
   selectedModel: GeminiModel;
 }
-
-// Function to convert URLs in text to clickable links
-const linkifyText = (text: string) => {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = text.split(urlRegex);
-  
-  return parts.map((part, i) => {
-    if (part.match(urlRegex)) {
-      return (
-        <a
-          key={i}
-          href={part}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:text-blue-800 hover:underline"
-          onClick={(e) => {
-            e.stopPropagation();
-            chrome.tabs.create({ url: part });
-          }}
-        >
-          {part}
-        </a>
-      );
-    }
-    return part;
-  });
-};
 
 export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedModel }: ThreadViewProps) {
   const [title, setTitle] = useState(thread.title);
@@ -55,6 +30,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [savedMessages, setSavedMessages] = useState<Set<string>>(new Set());
 
   // Load draft from storage when thread changes
   useEffect(() => {
@@ -401,6 +377,41 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     }
   };
 
+  // Check for already saved messages when thread changes
+  useEffect(() => {
+    const saved = new Set<string>();
+    thread.notes.forEach(note => {
+      // Find AI messages that have been saved as notes
+      thread.notes
+        .filter(aiNote => aiNote.content.includes('Q:') && aiNote.content.includes('A:'))
+        .forEach(aiNote => {
+          const [, answer] = aiNote.content.split('\n\nA:');
+          if (answer && note.content === answer.trim()) {
+            saved.add(answer.trim());
+          }
+        });
+    });
+    setSavedMessages(saved);
+  }, [thread.notes]);
+
+  // Function to save AI message as note
+  const saveAIMessageAsNote = (message: string) => {
+    const timestamp = new Date().toISOString();
+    const newNoteObj: Note = {
+      id: crypto.randomUUID(),
+      content: message,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const updatedThread = {
+      ...thread,
+      notes: [...thread.notes, newNoteObj],
+      updatedAt: timestamp,
+    };
+    onUpdate(updatedThread);
+    setSavedMessages(prev => new Set(prev).add(message));
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <header className="p-4 border-b border-gray-200 flex-shrink-0">
@@ -573,9 +584,11 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                   </div>
                 ) : (
                   <>
-                    <p className="text-gray-900 text-base whitespace-pre-wrap leading-relaxed">
-                      {linkifyText(note.content)}
-                    </p>
+                    <div className="prose prose-sm max-w-none text-gray-900 prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-strong:font-semibold">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {note.content}
+                      </ReactMarkdown>
+                    </div>
                     <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => {
@@ -668,46 +681,53 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                     </div>
                     {answer && (
                       <div className="bg-white rounded-lg p-3 shadow-sm group/message relative">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
-                          {answer.trim()}
-                        </p>
+                        <div className="prose prose-sm max-w-none text-sm text-gray-700 prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-strong:text-gray-900 prose-strong:font-semibold">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {answer.trim()}
+                          </ReactMarkdown>
+                        </div>
                         <div className="absolute top-2 right-2 opacity-0 group-hover/message:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => {
-                              const timestamp = new Date().toISOString();
-                              const newNoteObj: Note = {
-                                id: crypto.randomUUID(),
-                                content: answer.trim(),
-                                createdAt: timestamp,
-                                updatedAt: timestamp,
-                              };
-                              const updatedThread = {
-                                ...thread,
-                                notes: [...thread.notes, newNoteObj],
-                                updatedAt: timestamp,
-                              };
-                              onUpdate(updatedThread);
-                            }}
-                            className="p-1.5 text-blue-600 hover:text-blue-700 bg-white rounded-full hover:bg-blue-50 border border-blue-200 shadow-sm flex items-center gap-1.5"
-                            title="Save as note"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                          {savedMessages.has(answer.trim()) ? (
+                            <div className="p-1.5 text-green-600 bg-white rounded-full border border-green-200 shadow-sm flex items-center gap-1.5">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M20 6L9 17L4 12" />
+                              </svg>
+                              <span className="text-xs">Saved</span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => saveAIMessageAsNote(answer.trim())}
+                              className="p-1.5 text-blue-600 hover:text-blue-700 bg-white rounded-full hover:bg-blue-50 border border-blue-200 shadow-sm flex items-center gap-1.5"
+                              title="Save as note"
                             >
-                              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                              <polyline points="17 21 17 13 7 13 7 21" />
-                              <polyline points="7 3 7 8 15 8" />
-                            </svg>
-                            <span className="text-xs">Save as Note</span>
-                          </button>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                <polyline points="17 21 17 13 7 13 7 21" />
+                                <polyline points="7 3 7 8 15 8" />
+                              </svg>
+                              <span className="text-xs">Save as Note</span>
+                            </button>
+                          )}
                         </div>
                         <p className="text-xs text-gray-400 mt-2">
                           {new Date(note.createdAt).toLocaleString()}
