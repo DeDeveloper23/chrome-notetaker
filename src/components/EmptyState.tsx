@@ -1,10 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 interface EmptyStateProps {
-  onCreateThread: () => void;
+  onCreateThread: (initialText?: string) => void;
 }
 
 const EmptyState: React.FC<EmptyStateProps> = ({ onCreateThread }) => {
+  const keyBuffer = useRef<string[]>([]);
+  const hasCreatedThread = useRef(false);
+
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       // Ignore if user is typing in an input or if it's a modifier key
@@ -20,12 +23,32 @@ const EmptyState: React.FC<EmptyStateProps> = ({ onCreateThread }) => {
       
       // Only handle alphanumeric keys and punctuation
       if (e.key.length === 1) {
-        onCreateThread();
+        if (!hasCreatedThread.current) {
+          hasCreatedThread.current = true;
+          onCreateThread(e.key);
+          // Focus the textarea after a short delay to allow ThreadView to mount
+          setTimeout(() => {
+            const textarea = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Start typing your note..."]');
+            if (textarea) {
+              textarea.focus();
+              // Place cursor at the end
+              textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+            }
+          }, 50);
+        } else {
+          keyBuffer.current.push(e.key);
+          // Store the buffered keys in local storage for ThreadView to pick up
+          chrome.storage.local.set({ 'buffered_keys': keyBuffer.current.join('') });
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+      // Clear the buffer when component unmounts
+      chrome.storage.local.remove(['buffered_keys']);
+    };
   }, [onCreateThread]);
 
   return (

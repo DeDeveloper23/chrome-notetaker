@@ -33,15 +33,30 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savedMessages, setSavedMessages] = useState<Set<string>>(new Set());
   const [revealedNotes, setRevealedNotes] = useState<Set<string>>(new Set());
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load draft from storage when thread changes
+  // Load draft and check for buffered keys when thread changes
   useEffect(() => {
-    chrome.storage.local.get([`draft_${thread.id}`], (result) => {
+    chrome.storage.local.get([`draft_${thread.id}`, 'buffered_keys'], (result) => {
       const draft = result[`draft_${thread.id}`];
-      if (draft) {
+      const bufferedKeys = result['buffered_keys'];
+      
+      if (bufferedKeys) {
+        // If we have buffered keys, append them to the draft or use them as the initial note
+        setCurrentNote((draft || '') + bufferedKeys);
+        // Clear the buffered keys
+        chrome.storage.local.remove(['buffered_keys']);
+      } else if (draft) {
         setCurrentNote(draft);
       } else {
         setCurrentNote('');
+      }
+
+      // Focus the textarea after setting the content
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        // Place cursor at the end
+        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = textareaRef.current.value.length;
       }
     });
   }, [thread.id]);
@@ -563,6 +578,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
             {!editingNoteId && (
               <div className="bg-white rounded-lg p-4 max-w-3xl mx-auto border border-gray-200">
                 <textarea
+                  ref={textareaRef}
                   value={currentNote}
                   onChange={(e) => setCurrentNote(e.target.value)}
                   placeholder="Start typing your note..."
