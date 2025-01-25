@@ -159,10 +159,10 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const askAI = async (prompt: string) => {
     if (!prompt.trim() || !apiKey) return;
 
-    setIsGenerating(true);
-    // Pin the sidebar when chat is triggered
+    // Pin the sidebar immediately when chat is triggered
     setIsSidebarPinned(true);
     setIsSidebarExpanded(true);
+    setIsGenerating(true);
     
     console.log('Starting AI request with prompt:', prompt);
     console.log('Using model:', selectedModel);
