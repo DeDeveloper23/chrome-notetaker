@@ -474,7 +474,6 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.docx,.pdf"
                 multiple
                 className="hidden"
                 onChange={handleFileUpload}
@@ -690,7 +689,16 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
               <textarea
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder={apiKey ? "Ask AI about your notes..." : "Add API key in settings to enable AI features"}
+                onKeyDown={(e) => {
+                  // Check for Cmd/Ctrl + Enter
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    if (aiPrompt.trim() && !isGenerating && apiKey) {
+                      askAI(aiPrompt);
+                    }
+                  }
+                }}
+                placeholder={apiKey ? "Ask AI about your notes... (Cmd/Ctrl + Enter to send)" : "Add API key in settings to enable AI features"}
                 className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows={2}
                 disabled={!apiKey}
