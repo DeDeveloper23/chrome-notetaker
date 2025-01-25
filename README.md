@@ -60,7 +60,7 @@ https://github.com/user-attachments/assets/a8259b01-7083-4e0a-b151-ad06a513962d
    ```
 OR 
 
-3.5 Just Download the `dist` folder directly without `CLI` (click download all) : https://drive.google.com/drive/folders/127cbbNCvFkQv6DZCiMkh8_ocd6nhcfOg
+3.5 Just Download the `dist` folder directly without `CLI` (click download all) : https://drive.google.com/drive/folders/10tjzV9U8ODixxsG2f3iRbby5CeeQDSki?usp=drive_link
 
 4. Load the extension in Chrome:
    - Open Chrome and navigate to `chrome://extensions/`
