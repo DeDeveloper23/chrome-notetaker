@@ -52,10 +52,16 @@ const EmptyState: React.FC<EmptyStateProps> = ({ onCreateThread }) => {
   }, [onCreateThread]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full text-gray-500">
-      <p className="text-lg">Select a thread or create a new one</p>
-      <p className="text-sm mt-2">Use the sidebar to manage your notes</p>
-      <p className="text-sm mt-4 text-gray-400">Just start typing to create a new thread</p>
+    <div className="flex flex-col items-center justify-center h-full text-center select-none">
+      <div 
+        className="w-[120px] h-[120px] mb-8 bg-contain bg-center bg-no-repeat"
+        style={{ 
+          backgroundImage: 'url("/gourd.png")',
+          filter: 'invert(80%) sepia(30%) saturate(681%) hue-rotate(346deg) brightness(93%) contrast(92%)'
+        }}
+      />
+      <p className="text-xl font-medium">Type Away</p>
+      <p className="text-sm mt-2 text-gray-400">Watch your thoughts come to life</p>
     </div>
   );
 };
