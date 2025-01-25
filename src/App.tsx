@@ -6,6 +6,7 @@ import ThreadList from './components/ThreadList';
 import ThreadView from './components/ThreadView';
 import Settings from './components/Settings';
 import QuickActions from './components/QuickActions';
+import EmptyState from './components/EmptyState';
 import { ShortcutAction, handleShortcut, getModifierKey } from './utils/shortcuts';
 
 function App() {
@@ -253,10 +254,7 @@ function App() {
               selectedModel={settings.selectedModel}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
-              <p className="text-lg">Select a thread or create a new one</p>
-              <p className="text-sm mt-2">Use the sidebar to manage your notes</p>
-            </div>
+            <EmptyState />
           )}
 
           {/* Undo Delete Notification */}
