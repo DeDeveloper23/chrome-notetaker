@@ -254,7 +254,7 @@ function App() {
               selectedModel={settings.selectedModel}
             />
           ) : (
-            <EmptyState />
+            <EmptyState onCreateThread={handleCreateThread} />
           )}
 
           {/* Undo Delete Notification */}
