@@ -3,7 +3,7 @@ import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff, Upload, Loader2, 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Thread, Note, GeminiModel } from '../types';
+import type { Thread, Note, GeminiModel, Settings } from '../types';
 import { extractTextFromFile } from '../utils/fileExtractors';
 import NoteView from './NoteView';
 
@@ -13,9 +13,12 @@ interface ThreadViewProps {
   onUpdate: (thread: Thread) => void;
   apiKey: string;
   selectedModel: GeminiModel;
+  settings: Settings;
+  setShowSettings: (show: boolean) => void;
+  isThreadsSidebarHovered: boolean;
 }
 
-export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedModel }: ThreadViewProps) {
+export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedModel, settings, setShowSettings, isThreadsSidebarHovered }: ThreadViewProps) {
   const [title, setTitle] = useState(thread.title);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -114,8 +117,55 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     }
   };
 
+  const generateTitle = async (noteContent: string) => {
+    if (!apiKey || !settings.autoGenerateTitle) return thread;
+
+    // Only generate title if it's still the default
+    if (thread.title !== 'New Thread') return thread;
+
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: selectedModel });
+
+      const prompt = `Generate a concise, descriptive title (maximum 5 words) for a note that starts with this content:\n\n${noteContent}\n\nRespond with just the title, no quotes or punctuation.`;
+
+      const result = await model.generateContentStream([{ text: prompt }]);
+      
+      let generatedTitle = '';
+      for await (const chunk of result.stream) {
+        generatedTitle += chunk.text();
+      }
+
+      // Clean up the title
+      generatedTitle = generatedTitle.trim().replace(/['"]/g, '');
+      
+      // Update the thread with the new title while preserving notes
+      const updatedThread = {
+        ...thread,
+        title: generatedTitle,
+        notes: thread.notes, // Explicitly preserve the notes array
+      };
+      onUpdate(updatedThread);
+      setTitle(generatedTitle);
+      
+      // Show saved indicator
+      setSaveStatus('title');
+      if (savedIndicatorTimeoutRef.current) {
+        clearTimeout(savedIndicatorTimeoutRef.current);
+      }
+      savedIndicatorTimeoutRef.current = setTimeout(() => {
+        setSaveStatus(null);
+      }, 2000);
+
+      return updatedThread;
+    } catch (error) {
+      console.error('Error generating title:', error);
+      return thread;
+    }
+  };
+
   // Function to submit the note
-  const submitNote = () => {
+  const submitNote = async () => {
     if (!currentNote.trim()) return;
 
     const timestamp = new Date().toISOString();
@@ -126,15 +176,24 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
       updatedAt: timestamp
     };
 
-    const updatedThread = {
-      ...thread,
-      notes: [...thread.notes, newNoteObj],
+    // If this is the first note and we have an API key, generate a title
+    let updatedThread = thread;
+    if (thread.notes.length === 0 && apiKey) {
+      updatedThread = await generateTitle(currentNote.trim()) || thread;
+    }
+
+    // Update the thread with the new note
+    updatedThread = {
+      ...updatedThread,
+      notes: [newNoteObj, ...updatedThread.notes],
       updatedAt: timestamp,
     };
 
+    // Update the thread
     onUpdate(updatedThread);
+    
+    // Clear the note and draft storage
     setCurrentNote('');
-    // Clear the draft from storage
     chrome.storage.local.remove([`draft_${thread.id}`]);
   };
 
@@ -220,7 +279,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
       // Add the note to show the question immediately
       const updatedThread = {
         ...thread,
-        notes: [...thread.notes, newNoteObj],
+        notes: [newNoteObj, ...thread.notes],
         updatedAt: timestamp,
       };
       onUpdate(updatedThread);
@@ -374,10 +433,16 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
             updatedAt: timestamp
           };
 
+          // If this is the first note and auto-title is enabled, generate a title from the file name
+          let updatedThread = thread;
+          if (thread.notes.length === 0 && settings.autoGenerateTitle && apiKey) {
+            updatedThread = await generateTitle(file.name) || thread;
+          }
+
           // Update thread with new note
-          const updatedThread = {
-            ...thread,
-            notes: [...thread.notes, newNoteObj],
+          updatedThread = {
+            ...updatedThread,
+            notes: [newNoteObj, ...updatedThread.notes],
             updatedAt: timestamp,
           };
           onUpdate(updatedThread);
@@ -441,7 +506,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     };
     const updatedThread = {
       ...thread,
-      notes: [...thread.notes, newNoteObj],
+      notes: [newNoteObj, ...thread.notes],
       updatedAt: timestamp,
     };
     onUpdate(updatedThread);
@@ -489,7 +554,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <header className="p-4 border-b border-gray-200 flex-shrink-0">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={onBack}
             className="p-1 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
@@ -505,27 +570,6 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
               className="flex-1 text-lg font-semibold bg-transparent focus:outline-none"
               placeholder="Thread Title"
             />
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative"
-                title="Upload files"
-              >
-                {isUploading ? (
-                  <Loader2 size={20} className="animate-spin" />
-                ) : (
-                  <Upload size={20} />
-                )}
-              </button>
-            </div>
             <div
               className={`flex items-center gap-1.5 text-sm text-gray-500 transition-opacity duration-300 ${
                 saveStatus ? 'opacity-100' : 'opacity-0'
@@ -538,6 +582,27 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                 {saveStatus === 'title' ? 'Title saved' : 'Draft saved'}
               </span>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative"
+              title="Upload files"
+            >
+              {isUploading ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Upload size={20} />
+              )}
+            </button>
           </div>
         </div>
         {/* Upload Progress */}
@@ -581,6 +646,20 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                   ref={textareaRef}
                   value={currentNote}
                   onChange={(e) => setCurrentNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      const textarea = e.currentTarget;
+                      // Add brief visual feedback
+                      textarea.classList.add('ring-2', 'ring-blue-400');
+                      setTimeout(() => {
+                        textarea.classList.remove('ring-2', 'ring-blue-400');
+                      }, 200);
+                      if (currentNote.trim()) {
+                        submitNote();
+                      }
+                    }
+                  }}
                   placeholder="Start typing your note..."
                   className="w-full min-h-[100px] text-base bg-transparent border-none focus:outline-none resize-none"
                   rows={Math.max(3, currentNote.split('\n').length)}
@@ -600,7 +679,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
 
             {/* Existing notes */}
             {thread.notes
-              .filter(note => !note.content.includes('Q:') || !note.content.includes('A:'))
+              .filter(note => !(note.content.includes('Q:') && note.content.includes('A:')))
               .map(note => (
                 <NoteView
                   key={note.id}
@@ -627,7 +706,21 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
 
           {/* AI Chat Interface */}
           <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
-            <div className="flex gap-3 max-w-3xl mx-auto">
+            <div className="flex gap-3 max-w-3xl mx-auto relative">
+              {!apiKey && (
+                <div className="absolute inset-0 flex items-center px-3 pointer-events-none">
+                  <p className="text-gray-500">
+                    Add API key in{' '}
+                    <button
+                      onClick={() => setShowSettings(true)}
+                      className="text-blue-600 hover:text-blue-800 font-medium focus:outline-none focus:underline transition-colors pointer-events-auto"
+                    >
+                      settings
+                    </button>
+                    {' '}to enable AI features
+                  </p>
+                </div>
+              )}
               <textarea
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
@@ -646,7 +739,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                     }
                   }
                 }}
-                placeholder={apiKey ? `Ask AI about your notes... (${navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'} + Enter to send)` : "Add API key in settings to enable AI features"}
+                placeholder={apiKey ? `Ask AI about your notes... (${navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'} + Enter to send)` : ""}
                 className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                 rows={2}
                 disabled={!apiKey}
@@ -666,15 +759,15 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
         {/* AI Conversation Sidebar */}
         <div 
           className={`border-l border-gray-200 flex flex-col bg-gray-50 transition-all duration-300 ease-in-out min-w-[50px] flex-shrink-0 ${
-            isSidebarExpanded || isSidebarPinned ? 'w-[400px]' : 'w-[50px]'
+            (isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered ? 'w-[400px]' : 'w-[50px]'
           }`}
           onMouseEnter={handleSidebarMouseEnter}
           onMouseLeave={handleSidebarMouseLeave}
         >
           <div className={`p-4 border-b border-gray-200 bg-white flex items-center ${
-            isSidebarExpanded || isSidebarPinned ? 'justify-between' : 'justify-center'
+            (isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered ? 'justify-between' : 'justify-center'
           }`}>
-            {(isSidebarExpanded || isSidebarPinned) ? (
+            {((isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered) ? (
               <>
                 <div className="flex items-center justify-between w-full min-w-0">
                   <h2 className="text-lg font-semibold text-gray-900 truncate pr-2">AI Conversation</h2>
@@ -692,7 +785,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
             )}
           </div>
           <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${
-            isSidebarExpanded || isSidebarPinned ? 'opacity-100' : 'opacity-0'
+            (isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered ? 'opacity-100' : 'opacity-0'
           } transition-opacity duration-200`}>
             {thread.notes
               .filter(note => {
@@ -701,67 +794,37 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
               })
               .map((note) => {
                 const [question, answer] = note.content.split('\n\nA:');
+                const cleanQuestion = question.replace('Q:', '').trim();
+                const cleanAnswer = answer.trim();
+                const isMessageSaved = savedMessages.has(cleanAnswer);
+
                 return (
-                  <div key={note.id} className="space-y-4 min-w-0">
-                    <div className="bg-blue-50 rounded-lg p-3">
-                      <p className="text-sm font-medium text-blue-800 break-words">
-                        {question?.substring(2)}
-                      </p>
+                  <div key={note.id} className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium text-gray-900">{cleanQuestion}</p>
+                      <button
+                        onClick={() => deleteNote(note.id)}
+                        className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-200/50 transition-colors flex-shrink-0"
+                        title="Delete message"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
-                    {answer && (
-                      <div className="bg-white rounded-lg p-3 shadow-sm group/message relative">
-                        <div className="prose prose-sm max-w-none text-sm text-gray-700 prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-strong:text-gray-900 prose-strong:font-semibold">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {answer.trim()}
-                          </ReactMarkdown>
-                        </div>
-                        <div className="absolute top-2 right-2 opacity-0 group-hover/message:opacity-100 transition-opacity">
-                          {savedMessages.has(answer.trim()) ? (
-                            <div className="p-1.5 text-green-600 bg-white rounded-full border border-green-200 shadow-sm flex items-center gap-1.5">
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M20 6L9 17L4 12" />
-                              </svg>
-                              <span className="text-xs">Saved</span>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => saveAIMessageAsNote(answer.trim())}
-                              className="p-1.5 text-blue-600 hover:text-blue-700 bg-white rounded-full hover:bg-blue-50 border border-blue-200 shadow-sm flex items-center gap-1.5"
-                              title="Save as note"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                                <polyline points="17 21 17 13 7 13 7 21" />
-                                <polyline points="7 3 7 8 15 8" />
-                              </svg>
-                              <span className="text-xs">Save as Note</span>
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-2">
-                          {new Date(note.createdAt).toLocaleString()}
-                        </p>
-                      </div>
+                    <div className="text-sm text-gray-600">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        className="prose prose-sm max-w-none prose-p:leading-normal prose-pre:p-3 prose-pre:bg-gray-800 prose-pre:text-gray-100"
+                      >
+                        {cleanAnswer}
+                      </ReactMarkdown>
+                    </div>
+                    {!isMessageSaved && (
+                      <button
+                        onClick={() => saveAIMessageAsNote(cleanAnswer)}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        Save as note
+                      </button>
                     )}
                   </div>
                 );
