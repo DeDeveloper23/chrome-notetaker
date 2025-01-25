@@ -13,13 +13,19 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "lucide-react": "^0.344.0",
+    "mammoth": "^1.9.0",
+    "pdfjs-dist": "^3.11.174",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.3",
+    "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@tailwindcss/typography": "^0.5.16",
     "@types/chrome": "^0.0.263",
     "@types/fs-extra": "^11.0.4",
+    "@types/pdfjs-dist": "^2.10.378",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

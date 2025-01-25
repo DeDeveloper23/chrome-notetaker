@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs-extra';
+import { resolve } from 'path';
 
 // Custom plugin to copy manifest and icons
 const copyManifest = () => ({
@@ -21,6 +22,13 @@ const copyManifest = () => ({
       } else {
         console.warn('Icons folder not found!');
       }
+
+      // Copy PDF.js worker
+      console.log('Copying PDF.js worker...');
+      await fs.copy(
+        'node_modules/pdfjs-dist/build/pdf.worker.min.js',
+        'dist/pdf.worker.min.js'
+      );
     } catch (error) {
       console.error('Error copying files:', error);
       throw error;
@@ -48,8 +56,7 @@ export default defineConfig({
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
-        assetFileNames: '[name].[ext]',
-        format: 'iife'
+        assetFileNames: '[name].[ext]'
       }
     },
     sourcemap: true,
@@ -57,5 +64,10 @@ export default defineConfig({
     target: 'esnext',
     modulePreload: false
   },
-  publicDir: 'public'
+  publicDir: 'public',
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src')
+    }
+  }
 });
