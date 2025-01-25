@@ -555,12 +555,6 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     <div className="flex flex-col h-full overflow-hidden">
       <header className="p-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <button
-            onClick={onBack}
-            className="p-1 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
-          >
-            <ChevronLeft size={20} />
-          </button>
           <div className="flex-1 flex items-center gap-2">
             <input
               type="text"
