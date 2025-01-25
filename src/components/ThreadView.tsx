@@ -136,14 +136,22 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     if (!isSidebarPinned) {
       sidebarTimeoutRef.current = setTimeout(() => {
         setIsSidebarExpanded(false);
-      }, 300); // Small delay before collapsing
+      }, 500); // Increased delay for better UX
     }
   };
 
-  // Toggle pin state
+  // Toggle pin state with animation
   const togglePin = () => {
-    setIsSidebarPinned(!isSidebarPinned);
-    if (!isSidebarPinned) {
+    if (isSidebarPinned) {
+      setIsSidebarPinned(false);
+      // Keep expanded briefly after unpinning
+      setTimeout(() => {
+        if (!isSidebarPinned) { // Check if still unpinned
+          setIsSidebarExpanded(false);
+        }
+      }, 500);
+    } else {
+      setIsSidebarPinned(true);
       setIsSidebarExpanded(true);
     }
   };
@@ -159,9 +167,16 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const askAI = async (prompt: string) => {
     if (!prompt.trim() || !apiKey) return;
 
-    // Pin the sidebar immediately when chat is triggered
-    setIsSidebarPinned(true);
-    setIsSidebarExpanded(true);
+    // Pin the sidebar with animation
+    if (!isSidebarExpanded) {
+      setIsSidebarExpanded(true);
+      // Small delay before pinning to allow expansion animation
+      setTimeout(() => {
+        setIsSidebarPinned(true);
+      }, 300);
+    } else {
+      setIsSidebarPinned(true);
+    }
     setIsGenerating(true);
     
     console.log('Starting AI request with prompt:', prompt);
@@ -697,13 +712,19 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                   // Check for Cmd/Ctrl + Enter
                   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                     e.preventDefault();
+                    const textarea = e.currentTarget;
+                    // Add brief visual feedback
+                    textarea.classList.add('ring-2', 'ring-blue-400');
+                    setTimeout(() => {
+                      textarea.classList.remove('ring-2', 'ring-blue-400');
+                    }, 200);
                     if (aiPrompt.trim() && !isGenerating && apiKey) {
                       askAI(aiPrompt);
                     }
                   }
                 }}
-                placeholder={apiKey ? "Ask AI about your notes... (Cmd/Ctrl + Enter to send)" : "Add API key in settings to enable AI features"}
-                className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder={apiKey ? `Ask AI about your notes... (${navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'} + Enter to send)` : "Add API key in settings to enable AI features"}
+                className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                 rows={2}
                 disabled={!apiKey}
               />
