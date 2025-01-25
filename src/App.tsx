@@ -182,7 +182,7 @@ function App() {
                   title="New Thread"
                 >
                   <Plus size={20} />
-                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
                     {shortcuts[1].modifier === 'cmd' ? '⌘' : 'Ctrl'} + N
                   </span>
                 </button>
@@ -192,7 +192,7 @@ function App() {
                   title="Quick Actions"
                 >
                   <Command size={20} />
-                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
                     {shortcuts[0].modifier === 'cmd' ? '⌘' : 'Ctrl'} + K
                   </span>
                 </button>
@@ -202,7 +202,7 @@ function App() {
                   title="Settings"
                 >
                   <SettingsIcon size={20} />
-                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                  <span className="absolute right-0 top-full mt-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
                     {shortcuts[2].modifier === 'cmd' ? '⌘' : 'Ctrl'} + ,
                   </span>
                 </button>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff, Upload, Loader2 } from 'lucide-react';
+import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff, Upload, Loader2, EyeOff, Eye } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -31,6 +31,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savedMessages, setSavedMessages] = useState<Set<string>>(new Set());
+  const [revealedNotes, setRevealedNotes] = useState<Set<string>>(new Set());
 
   // Load draft from storage when thread changes
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
           savedIndicatorTimeoutRef.current = setTimeout(() => {
             setSaveStatus(null);
           }, 2000);
-        }, 1500); // Auto-save after 1.5 seconds of no typing
+        }, 500); // Auto-save after 0.5 seconds of no typing
       }
     }
     
@@ -412,6 +413,44 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     setSavedMessages(prev => new Set(prev).add(message));
   };
 
+  const toggleNoteVisibility = (noteId: string) => {
+    setRevealedNotes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(noteId)) {
+        newSet.delete(noteId);
+      } else {
+        newSet.add(noteId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleNoteSecret = (noteId: string) => {
+    const note = thread.notes.find(n => n.id === noteId);
+    if (!note) return;
+
+    const timestamp = new Date().toISOString();
+    const updatedThread = {
+      ...thread,
+      notes: thread.notes.map(n => 
+        n.id === noteId 
+          ? { ...n, isSecret: !n.isSecret, updatedAt: timestamp }
+          : n
+      ),
+      updatedAt: timestamp,
+    };
+    onUpdate(updatedThread);
+    
+    // If making secret, remove from revealed set
+    if (!note.isSecret) {
+      setRevealedNotes(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(noteId);
+        return newSet;
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <header className="p-4 border-b border-gray-200 flex-shrink-0">
@@ -585,11 +624,35 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                 ) : (
                   <>
                     <div className="prose prose-sm max-w-none text-gray-900 prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-strong:font-semibold">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {note.content}
-                      </ReactMarkdown>
+                      {note.isSecret && !revealedNotes.has(note.id) ? (
+                        <p className="font-mono">{'•'.repeat(Math.min(50, note.content.length))}</p>
+                      ) : (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {note.content}
+                        </ReactMarkdown>
+                      )}
                     </div>
-                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (note.isSecret) {
+                            toggleNoteVisibility(note.id);
+                          } else {
+                            toggleNoteSecret(note.id);
+                          }
+                        }}
+                        className={`p-1.5 bg-white rounded-full border shadow-sm transition-colors ${
+                          note.isSecret
+                            ? revealedNotes.has(note.id)
+                              ? 'text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50'
+                              : 'text-purple-600 hover:text-purple-700 border-purple-200 hover:bg-purple-50'
+                            : 'text-gray-500 hover:text-gray-700 border-gray-200 hover:bg-gray-50'
+                        }`}
+                        title={note.isSecret ? (revealedNotes.has(note.id) ? "Hide content" : "Show content") : "Make note secret"}
+                      >
+                        {note.isSecret ? (revealedNotes.has(note.id) ? <Eye size={14} /> : <EyeOff size={14} />) : <EyeOff size={14} />}
+                      </button>
                       <button
                         onClick={() => {
                           setEditingNoteId(note.id);
@@ -601,9 +664,19 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
                         <Pencil size={14} />
                       </button>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">
+                    <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
                       {new Date(note.createdAt).toLocaleString()}
                       {note.updatedAt !== note.createdAt && ' (edited)'}
+                      {note.isSecret && !revealedNotes.has(note.id) && ' • Hidden note'}
+                      {savedMessages.has(note.content) && (
+                        <>
+                          <span className="mx-1">•</span>
+                          <span className="flex items-center gap-0.5">
+                            <Sparkles size={12} className="text-purple-400" />
+                            <span className="text-purple-400">AI Generated</span>
+                          </span>
+                        </>
+                      )}
                     </p>
                   </>
                 )}
