@@ -1,4 +1,4 @@
-# Ascend Notetaker Chrome Extension
+# Squash Notetaker Chrome Extension
 
 A beautiful and powerful note-taking Chrome extension with AI capabilities. Take notes directly in your browser with a clean, modern interface and optional AI-powered enhancements.
 
@@ -60,7 +60,7 @@ https://github.com/user-attachments/assets/a8259b01-7083-4e0a-b151-ad06a513962d
    ```
 OR 
 
-3.5 Just Download the `dist` folder directly without `CLI` (click download all) : https://drive.google.com/drive/folders/1rckrZe-sOMENEE9Gvlf3oL8w-vPZ1rx_?usp=sharing
+3.5 Just Download the `dist` folder directly without `CLI` (click download all) : [Direct Download Link](https://www.filemail.com/d/czthzblnmzgypuh)
 
 4. Load the extension in Chrome:
    - Open Chrome and navigate to `chrome://extensions/`

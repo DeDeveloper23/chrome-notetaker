@@ -7,8 +7,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const sizes = [16, 48, 128];
-const inputSvg = path.join(__dirname, '../public/icons/icon.svg');
-const outputDir = path.join(__dirname, '../public/icons');
+const inputImage = path.join(__dirname, '../public/gourd.png');
+const outputDir = path.join(__dirname, '../icons');
 
 async function generateIcons() {
   try {
@@ -19,8 +19,14 @@ async function generateIcons() {
 
     // Generate each size
     for (const size of sizes) {
-      await sharp(inputSvg)
+      await sharp(inputImage)
         .resize(size, size)
+        // Apply the same filter as in EmptyState
+        .modulate({
+          brightness: 0.93, // brightness 93%
+          saturation: 6.81, // saturation 681%
+        })
+        .tint({ r: 255, g: 244, b: 230 }) // Approximate sepia tone
         .png()
         .toFile(path.join(outputDir, `icon${size}.png`));
       
