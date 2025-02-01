@@ -51,14 +51,34 @@ export async function extractTextFromTXT(file: File): Promise<string> {
 export async function extractTextFromFile(file: File): Promise<string> {
   const extension = file.name.split('.').pop()?.toLowerCase();
   
+  // First try to read as plain text for any file
+  try {
+    const text = await file.text();
+    // Check if the text is readable (not binary)
+    if (isReadableText(text)) {
+      return text.trim();
+    }
+  } catch (error) {
+    console.log('File is not readable as plain text, trying specialized extractors...');
+  }
+
+  // Fall back to specialized extractors for known formats
   switch (extension) {
     case 'pdf':
       return extractTextFromPDF(file);
     case 'docx':
       return extractTextFromDOCX(file);
-    case 'txt':
-      return extractTextFromTXT(file);
     default:
-      throw new Error(`Unsupported file type: ${extension}`);
+      throw new Error('Unable to extract text from this file type');
   }
+}
+
+// Helper function to check if text is readable (not binary)
+function isReadableText(text: string): boolean {
+  // Check if the text contains mostly printable ASCII characters
+  const printableChars = text.replace(/[\x20-\x7E\n\r\t]/g, '');
+  const ratio = printableChars.length / text.length;
+  
+  // If less than 10% of characters are non-printable, consider it readable text
+  return ratio < 0.1 && text.length > 0;
 } 

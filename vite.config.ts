@@ -23,6 +23,12 @@ const copyManifest = () => ({
         console.warn('Icons folder not found!');
       }
 
+      // Copy public folder contents
+      if (fs.existsSync('public')) {
+        console.log('Copying public folder contents...');
+        await fs.copy('public', 'dist');
+      }
+
       // Copy PDF.js worker
       console.log('Copying PDF.js worker...');
       await fs.copy(
