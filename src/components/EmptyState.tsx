@@ -1,11 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 
-interface EmptyStateProps {
-  onCreateThread: (initialText?: string) => void;
-}
+type EmptyStateProps = {
+  onCreateThread: (initialChar?: string) => void;
+};
 
 const EmptyState: React.FC<EmptyStateProps> = ({ onCreateThread }) => {
-  const keyBuffer = useRef<string[]>([]);
   const hasCreatedThread = useRef(false);
 
   useEffect(() => {
@@ -26,19 +25,6 @@ const EmptyState: React.FC<EmptyStateProps> = ({ onCreateThread }) => {
         if (!hasCreatedThread.current) {
           hasCreatedThread.current = true;
           onCreateThread(e.key);
-          // Focus the textarea after a short delay to allow ThreadView to mount
-          setTimeout(() => {
-            const textarea = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Start typing your note..."]');
-            if (textarea) {
-              textarea.focus();
-              // Place cursor at the end
-              textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
-            }
-          }, 50);
-        } else {
-          keyBuffer.current.push(e.key);
-          // Store the buffered keys in local storage for ThreadView to pick up
-          chrome.storage.local.set({ 'buffered_keys': keyBuffer.current.join('') });
         }
       }
     };
@@ -46,8 +32,6 @@ const EmptyState: React.FC<EmptyStateProps> = ({ onCreateThread }) => {
     window.addEventListener('keydown', handleKeyPress);
     return () => {
       window.removeEventListener('keydown', handleKeyPress);
-      // Clear the buffer when component unmounts
-      chrome.storage.local.remove(['buffered_keys']);
     };
   }, [onCreateThread]);
 

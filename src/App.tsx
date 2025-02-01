@@ -48,7 +48,7 @@ function App() {
     ));
   };
 
-  const handleCreateThread = () => {
+  const handleCreateThread = (initialChar?: string) => {
     const timestamp = new Date().toISOString();
     const newThread: Thread = {
       id: crypto.randomUUID(),
@@ -60,6 +60,15 @@ function App() {
     };
     setThreads([newThread, ...threads]);
     setSelectedThreadId(newThread.id);
+    
+    // If there's an initial character, store it in chrome.storage
+    if (initialChar) {
+      chrome.storage.local.set({ 'buffered_keys': initialChar });
+    }
+  };
+
+  const handleCreateThreadClick = () => {
+    handleCreateThread();
   };
 
   const handleDeleteThread = (threadId: string) => {
@@ -122,7 +131,7 @@ function App() {
       key: 'n',
       description: 'New Thread',
       modifier: getModifierKey(),
-      action: handleCreateThread
+      action: handleCreateThreadClick
     },
     {
       key: ',',
@@ -178,7 +187,7 @@ function App() {
               <h1 className="text-xl font-semibold text-gray-900 whitespace-nowrap">Notes</h1>
               <div className="flex gap-2">
                 <button
-                  onClick={handleCreateThread}
+                  onClick={handleCreateThreadClick}
                   className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative group"
                   title="New Thread"
                 >
@@ -252,6 +261,9 @@ function App() {
               onUpdate={handleUpdateThread}
               apiKey={settings.apiKey}
               selectedModel={settings.selectedModel}
+              settings={settings}
+              setShowSettings={setShowSettings}
+              isThreadsSidebarHovered={isSidebarExpanded}
             />
           ) : (
             <EmptyState onCreateThread={handleCreateThread} />
