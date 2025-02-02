@@ -36,16 +36,16 @@ const EmptyState: React.FC<EmptyStateProps> = ({ onCreateThread }) => {
   }, [onCreateThread]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center select-none">
+    <div className="flex flex-col items-center justify-center h-full text-center select-none bg-white dark:bg-apple-gray-800">
       <div 
-        className="w-[120px] h-[120px] mb-8 bg-contain bg-center bg-no-repeat"
+        className="w-[120px] h-[120px] mb-8 bg-contain bg-center bg-no-repeat opacity-80 dark:opacity-60"
         style={{ 
           backgroundImage: 'url("/gourd.png")',
           filter: 'invert(80%) sepia(30%) saturate(681%) hue-rotate(346deg) brightness(93%) contrast(92%)'
         }}
       />
-      <p className="text-xl font-medium">Type Away</p>
-      <p className="text-sm mt-2 text-gray-400">Watch your thoughts come to life</p>
+      <p className="text-xl font-medium text-gray-900 dark:text-white">Type Away</p>
+      <p className="text-sm mt-2 text-gray-500 dark:text-gray-400">Watch your thoughts come to life</p>
     </div>
   );
 };

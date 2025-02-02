@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff, Upload, Loader2, EyeOff, Eye } from 'lucide-react';
+import { ChevronLeft, Sparkles, Pencil, Check, X, Pin, PinOff, Upload, Loader2, Eye, EyeOff } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Thread, Note, GeminiModel, Settings } from '../types';
 import { extractTextFromFile } from '../utils/fileExtractors';
-import NoteView from './NoteView';
 
 interface ThreadViewProps {
   thread: Thread;
@@ -15,10 +14,9 @@ interface ThreadViewProps {
   selectedModel: GeminiModel;
   settings: Settings;
   setShowSettings: (show: boolean) => void;
-  isThreadsSidebarHovered: boolean;
 }
 
-export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedModel, settings, setShowSettings, isThreadsSidebarHovered }: ThreadViewProps) {
+export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedModel, settings, setShowSettings }: ThreadViewProps) {
   const [title, setTitle] = useState(thread.title);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -32,11 +30,11 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const savedIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savedMessages, setSavedMessages] = useState<Set<string>>(new Set());
   const [revealedNotes, setRevealedNotes] = useState<Set<string>>(new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [aiMessages, setAiMessages] = useState<Array<{ question: string; answer: string }>>([]);
 
   // Load draft and check for buffered keys when thread changes
   useEffect(() => {
@@ -118,7 +116,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   };
 
   const generateTitle = async (noteContent: string) => {
-    if (!apiKey || !settings.autoGenerateTitle) return thread;
+    if (!apiKey || settings.autoGenerateTitle === false) return thread;
 
     // Only generate title if it's still the default
     if (thread.title !== 'New Thread') return thread;
@@ -197,7 +195,7 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     chrome.storage.local.remove([`draft_${thread.id}`]);
   };
 
-  // Handle sidebar hover
+  // Update the sidebar handlers to be more stable
   const handleSidebarMouseEnter = () => {
     if (!isSidebarPinned) {
       if (sidebarTimeoutRef.current) {
@@ -207,28 +205,28 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     }
   };
 
-  const handleSidebarMouseLeave = () => {
+  const handleSidebarMouseLeave = (e: React.MouseEvent) => {
     if (!isSidebarPinned) {
-      sidebarTimeoutRef.current = setTimeout(() => {
-        setIsSidebarExpanded(false);
-      }, 500); // Increased delay for better UX
+      // Get the related target (element being entered)
+      const relatedTarget = e.relatedTarget as HTMLElement;
+      const currentTarget = e.currentTarget as HTMLElement;
+      
+      // Check if we're still within the sidebar or its children
+      if (currentTarget.contains(relatedTarget)) {
+        return;
+      }
+
+      if (sidebarTimeoutRef.current) {
+        clearTimeout(sidebarTimeoutRef.current);
+      }
+      setIsSidebarExpanded(false);
     }
   };
 
   // Toggle pin state with animation
   const togglePin = () => {
-    if (isSidebarPinned) {
-      setIsSidebarPinned(false);
-      // Keep expanded briefly after unpinning
-      setTimeout(() => {
-        if (!isSidebarPinned) { // Check if still unpinned
-          setIsSidebarExpanded(false);
-        }
-      }, 500);
-    } else {
-      setIsSidebarPinned(true);
-      setIsSidebarExpanded(true);
-    }
+    setIsSidebarPinned(prev => !prev);
+    setIsSidebarExpanded(true);
   };
 
   useEffect(() => {
@@ -245,7 +243,6 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     // Pin the sidebar with animation
     if (!isSidebarExpanded) {
       setIsSidebarExpanded(true);
-      // Small delay before pinning to allow expansion animation
       setTimeout(() => {
         setIsSidebarPinned(true);
       }, 300);
@@ -254,117 +251,50 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     }
     setIsGenerating(true);
     
-    console.log('Starting AI request with prompt:', prompt);
-    console.log('Using model:', selectedModel);
-    
     try {
-      // Initialize Gemini API
       const genAI = new GoogleGenerativeAI(apiKey);
-      console.log('Initialized Gemini API');
-      
       const model = genAI.getGenerativeModel({ model: selectedModel });
-      console.log('Got model instance');
-
-      const timestamp = new Date().toISOString();
-      const noteId = crypto.randomUUID();
-      
-      // Create initial note with the question
-      const newNoteObj: Note = {
-        id: noteId,
-        content: `Q: ${prompt}\n\nA: Generating response...`,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      };
-
-      // Add the note to show the question immediately
-      const updatedThread = {
-        ...thread,
-        notes: [newNoteObj, ...thread.notes],
-        updatedAt: timestamp,
-      };
-      onUpdate(updatedThread);
-      console.log('Added initial note');
 
       // Prepare context from existing notes
       const notesContext = thread.notes
-        .filter(note => note.id !== noteId) // Exclude the current question
         .map(note => note.content)
         .join('\n\n');
       
-      // Format prompt for Flash model
+      // Format prompt
       const promptText = `Context from existing notes:\n${notesContext}\n\nUser question: ${prompt}\n\nPlease provide a concise response based on the context above.`;
 
-      console.log('Sending request to Gemini...');
-      
       // Stream the AI response
       const result = await model.generateContentStream([{ text: promptText }]);
-      console.log('Got stream response');
       
       let fullResponse = '';
-      let currentThread = { ...thread }; // Keep track of current thread state
       
       for await (const chunk of result.stream) {
         const chunkText = chunk.text();
-        console.log('Received chunk:', chunkText);
         fullResponse += chunkText;
         
-        // Update the note with the accumulated response
-        const updatedNoteObj: Note = {
-          id: noteId,
-          content: `Q: ${prompt}\n\nA: ${fullResponse}`,
-          createdAt: timestamp,
-          updatedAt: new Date().toISOString()
-        };
-        console.log('Created updated note object:', updatedNoteObj);
-
-        // Update using the current thread state
-        const noteExists = currentThread.notes.some(note => note.id === noteId);
-        console.log('Note status:', {
-          noteId,
-          exists: noteExists,
-          currentNotesCount: currentThread.notes.length,
-          updatedNoteContent: updatedNoteObj.content
+        // Update AI messages in real-time
+        setAiMessages(prev => {
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+          if (lastIndex >= 0 && updated[lastIndex].question === prompt) {
+            updated[lastIndex].answer = fullResponse;
+          } else {
+            updated.push({ question: prompt, answer: fullResponse });
+          }
+          return updated;
         });
-
-        const threadWithResponse = {
-          ...currentThread,
-          notes: noteExists
-            ? currentThread.notes.map(note => 
-                note.id === noteId ? updatedNoteObj : note
-              )
-            : [...currentThread.notes, updatedNoteObj],
-          updatedAt: new Date().toISOString()
-        };
-        
-        console.log('Thread update:', {
-          beforeCount: currentThread.notes.length,
-          afterCount: threadWithResponse.notes.length,
-          updatedNote: threadWithResponse.notes.find(n => n.id === noteId)?.content
-        });
-        
-        // Update the current thread state
-        currentThread = threadWithResponse;
-        onUpdate(threadWithResponse);
       }
 
-      console.log('Completed response:', fullResponse);
       setAiPrompt('');
     } catch (error) {
-      console.error('Error details:', error);
-      // Update the note to show the error
-      const errorNote: Note = {
-        id: crypto.randomUUID(),
-        content: `Q: ${prompt}\n\nA: Error generating response. Please check the console for details and try again.`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      const threadWithError = {
-        ...thread,
-        notes: [...thread.notes, errorNote],
-        updatedAt: new Date().toISOString()
-      };
-      onUpdate(threadWithError);
+      console.error('Error:', error);
+      setAiMessages(prev => [
+        ...prev,
+        { 
+          question: prompt,
+          answer: 'Error generating response. Please try again.'
+        }
+      ]);
     } finally {
       setIsGenerating(false);
     }
@@ -397,79 +327,34 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
+    if (!event.target.files?.length) return;
+    
     setIsUploading(true);
-    const fileArray = Array.from(files);
-    const progress: { [key: string]: number } = {};
-    fileArray.forEach(file => {
-      progress[file.name] = 0;
-    });
-    setUploadProgress(progress);
-
+    const timestamp = new Date().toISOString();
+    
     try {
-      for (const file of fileArray) {
-        try {
-          // Update progress to show started
-          setUploadProgress(prev => ({
-            ...prev,
-            [file.name]: 10
-          }));
+      const files = Array.from(event.target.files);
+      const texts = await Promise.all(files.map(file => extractTextFromFile(file)));
+      
+      // Create a new note for each file
+      const newNotes: Note[] = texts.map((text, index) => ({
+        id: crypto.randomUUID(),
+        content: `# ${files[index].name}\n\n${text}`,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }));
 
-          const text = await extractTextFromFile(file);
-          
-          // Update progress to show text extracted
-          setUploadProgress(prev => ({
-            ...prev,
-            [file.name]: 50
-          }));
+      // Update thread with all new notes
+      const updatedThread = {
+        ...thread,
+        notes: [...newNotes, ...thread.notes],
+        updatedAt: timestamp
+      };
 
-          const timestamp = new Date().toISOString();
-          const newNoteObj: Note = {
-            id: crypto.randomUUID(),
-            content: `File: ${file.name}\n\n${text}`,
-            createdAt: timestamp,
-            updatedAt: timestamp
-          };
-
-          // If this is the first note and auto-title is enabled, generate a title from the file name
-          let updatedThread = thread;
-          if (thread.notes.length === 0 && settings.autoGenerateTitle && apiKey) {
-            updatedThread = await generateTitle(file.name) || thread;
-          }
-
-          // Update thread with new note
-          updatedThread = {
-            ...updatedThread,
-            notes: [newNoteObj, ...updatedThread.notes],
-            updatedAt: timestamp,
-          };
-          onUpdate(updatedThread);
-
-          // Update progress to show completed
-          setUploadProgress(prev => ({
-            ...prev,
-            [file.name]: 100
-          }));
-
-          // Clear progress after a delay
-          setTimeout(() => {
-            setUploadProgress(prev => {
-              const newProgress = { ...prev };
-              delete newProgress[file.name];
-              return newProgress;
-            });
-          }, 2000);
-        } catch (error) {
-          console.error(`Error processing file ${file.name}:`, error);
-          // Show error in progress
-          setUploadProgress(prev => ({
-            ...prev,
-            [file.name]: -1
-          }));
-        }
-      }
+      // Update the thread
+      onUpdate(updatedThread);
+    } catch (error) {
+      console.error('Error extracting text:', error);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -495,7 +380,6 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
     setSavedMessages(saved);
   }, [thread.notes]);
 
-  // Function to save AI message as note
   const saveAIMessageAsNote = (message: string) => {
     const timestamp = new Date().toISOString();
     const newNoteObj: Note = {
@@ -552,286 +436,279 @@ export default function ThreadView({ thread, onBack, onUpdate, apiKey, selectedM
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <header className="p-4 border-b border-gray-200 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2">
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={handleTitleBlur}
-              className="flex-1 text-lg font-semibold bg-transparent focus:outline-none"
-              placeholder="Thread Title"
-            />
-            <div
-              className={`flex items-center gap-1.5 text-sm text-gray-500 transition-opacity duration-300 ${
-                saveStatus ? 'opacity-100' : 'opacity-0'
-              }`}
-            >
-              <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span className="text-xs">
-                {saveStatus === 'title' ? 'Title saved' : 'Draft saved'}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 relative"
-              title="Upload files"
-            >
-              {isUploading ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <Upload size={20} />
-              )}
-            </button>
-          </div>
+    <div className="h-full flex flex-col bg-white dark:bg-apple-gray-800">
+      {/* Header */}
+      <header className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-apple-gray-700">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={onBack}
+            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-apple-gray-700"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={handleTitleBlur}
+            className="text-lg font-semibold text-gray-900 dark:text-white bg-transparent border-none focus:outline-none focus:ring-0 min-w-0 flex-1"
+            placeholder="Untitled Thread"
+          />
+          {saveStatus === 'title' && (
+            <span className="text-green-600 dark:text-green-400 text-sm animate-fade-out">
+              Saved
+            </span>
+          )}
         </div>
-        {/* Upload Progress */}
-        {Object.keys(uploadProgress).length > 0 && (
-          <div className="mt-2 space-y-2">
-            {Object.entries(uploadProgress).map(([fileName, progress]) => (
-              <div key={fileName} className="flex items-center gap-2">
-                <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-300 ${
-                      progress === -1
-                        ? 'bg-red-500'
-                        : progress === 100
-                        ? 'bg-green-500'
-                        : 'bg-blue-500'
-                    }`}
-                    style={{ width: `${progress === -1 ? 100 : progress}%` }}
-                  />
-                </div>
-                <span className="text-xs text-gray-500 min-w-[60px]">
-                  {progress === -1
-                    ? 'Error'
-                    : progress === 100
-                    ? 'Done'
-                    : `${progress}%`}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </header>
 
-      <div className="flex flex-1 min-w-0 overflow-hidden">
-        {/* Main notes panel */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {/* Current note input */}
-            {!editingNoteId && (
-              <div className="bg-white rounded-lg p-4 max-w-3xl mx-auto border border-gray-200">
-                <textarea
-                  ref={textareaRef}
-                  value={currentNote}
-                  onChange={(e) => setCurrentNote(e.target.value)}
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                      e.preventDefault();
-                      const textarea = e.currentTarget;
-                      // Add brief visual feedback
-                      textarea.classList.add('ring-2', 'ring-blue-400');
-                      setTimeout(() => {
-                        textarea.classList.remove('ring-2', 'ring-blue-400');
-                      }, 200);
-                      if (currentNote.trim()) {
-                        submitNote();
-                      }
-                    }
-                  }}
-                  placeholder="Start typing your note..."
-                  className="w-full min-h-[100px] text-base bg-transparent border-none focus:outline-none resize-none"
-                  rows={Math.max(3, currentNote.split('\n').length)}
-                />
-                {currentNote.trim() && (
-                  <div className="flex justify-end mt-2">
-                    <button
-                      onClick={submitNote}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Save Note
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Existing notes */}
-            {thread.notes
-              .filter(note => !(note.content.includes('Q:') && note.content.includes('A:')))
-              .map(note => (
-                <NoteView
-                  key={note.id}
-                  note={note}
-                  editingNoteId={editingNoteId}
-                  editedContent={editedContent}
-                  revealedNotes={revealedNotes}
-                  savedMessages={savedMessages}
-                  onEdit={updateNote}
-                  onDelete={deleteNote}
-                  onCancelEdit={() => {
-                    setEditingNoteId(null);
-                    setEditedContent('');
-                  }}
-                  onStartEdit={(noteId, content) => {
-                    setEditingNoteId(noteId);
-                    setEditedContent(content);
-                  }}
-                  onToggleVisibility={toggleNoteVisibility}
-                  onToggleSecret={toggleNoteSecret}
-                />
-              ))}
-          </div>
-
-          {/* AI Chat Interface */}
-          <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
-            <div className="flex gap-3 max-w-3xl mx-auto relative">
-              {!apiKey && (
-                <div className="absolute inset-0 flex items-center px-3 pointer-events-none">
-                  <p className="text-gray-500">
-                    Add API key in{' '}
-                    <button
-                      onClick={() => setShowSettings(true)}
-                      className="text-blue-600 hover:text-blue-800 font-medium focus:outline-none focus:underline transition-colors pointer-events-auto"
-                    >
-                      settings
-                    </button>
-                    {' '}to enable AI features
-                  </p>
-                </div>
-              )}
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Notes Area */}
+        <div className="flex-1 flex flex-col min-w-0 p-4 overflow-y-auto">
+          {/* Current Note Input */}
+          <div className="mb-6">
+            <div className="relative">
               <textarea
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
+                ref={textareaRef}
+                value={currentNote}
+                onChange={(e) => setCurrentNote(e.target.value)}
                 onKeyDown={(e) => {
-                  // Check for Cmd/Ctrl + Enter
-                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
-                    const textarea = e.currentTarget;
-                    // Add brief visual feedback
-                    textarea.classList.add('ring-2', 'ring-blue-400');
-                    setTimeout(() => {
-                      textarea.classList.remove('ring-2', 'ring-blue-400');
-                    }, 200);
-                    if (aiPrompt.trim() && !isGenerating && apiKey) {
-                      askAI(aiPrompt);
-                    }
+                    submitNote();
                   }
                 }}
-                placeholder={apiKey ? `Ask AI about your notes... (${navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'} + Enter to send)` : ""}
-                className="flex-1 p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-                rows={2}
-                disabled={!apiKey}
+                placeholder="Start typing..."
+                className="w-full p-3 min-h-[100px] bg-gray-50 dark:bg-apple-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 border border-gray-200 dark:border-apple-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-apple-blue-500 resize-none"
               />
+              {saveStatus === 'draft' && (
+                <span className="absolute right-2 bottom-2 text-green-600 dark:text-green-400 text-sm bg-white dark:bg-apple-gray-700 px-2 py-1 rounded animate-fade-out">
+                  Draft saved
+                </span>
+              )}
+            </div>
+            <div className="flex justify-between items-center mt-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-apple-gray-700 hover:bg-gray-200 dark:hover:bg-apple-gray-600 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <Upload size={16} />
+                  <span>Upload</span>
+                </button>
+                {!apiKey && (
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-lg transition-colors"
+                  >
+                    <span>Set up AI</span>
+                  </button>
+                )}
+              </div>
               <button
-                onClick={() => askAI(aiPrompt)}
-                disabled={!aiPrompt.trim() || isGenerating || !apiKey}
-                className="p-2.5 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors self-end"
-                title="Ask AI"
+                onClick={submitNote}
+                disabled={!currentNote.trim()}
+                className="px-4 py-1.5 text-sm text-white bg-blue-600 dark:bg-apple-blue-500 hover:bg-blue-700 dark:hover:bg-apple-blue-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Sparkles size={20} />
+                Save Note
               </button>
             </div>
           </div>
-        </div>
 
-        {/* AI Conversation Sidebar */}
-        <div 
-          className={`border-l border-gray-200 flex flex-col bg-gray-50 transition-all duration-300 ease-in-out min-w-[50px] flex-shrink-0 ${
-            (isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered ? 'w-[400px]' : 'w-[50px]'
-          }`}
-          onMouseEnter={handleSidebarMouseEnter}
-          onMouseLeave={handleSidebarMouseLeave}
-        >
-          <div className={`p-4 border-b border-gray-200 bg-white flex items-center ${
-            (isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered ? 'justify-between' : 'justify-center'
-          }`}>
-            {((isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered) ? (
-              <>
-                <div className="flex items-center justify-between w-full min-w-0">
-                  <h2 className="text-lg font-semibold text-gray-900 truncate pr-2">AI Conversation</h2>
-                  <button
-                    onClick={togglePin}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
-                    title={isSidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
-                  >
-                    {isSidebarPinned ? <PinOff size={16} /> : <Pin size={16} />}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <Sparkles size={20} className="text-gray-600" />
-            )}
-          </div>
-          <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${
-            (isSidebarExpanded || isSidebarPinned) && !isThreadsSidebarHovered ? 'opacity-100' : 'opacity-0'
-          } transition-opacity duration-200`}>
-            {thread.notes
-              .filter(note => {
-                const hasQAndA = note.content.includes('Q:') && note.content.includes('A:');
-                return hasQAndA;
-              })
-              .map((note) => {
-                const [question, answer] = note.content.split('\n\nA:');
-                const cleanQuestion = question.replace('Q:', '').trim();
-                const cleanAnswer = answer.trim();
-                const isMessageSaved = savedMessages.has(cleanAnswer);
-
-                return (
-                  <div key={note.id} className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-gray-900">{cleanQuestion}</p>
+          {/* Notes List */}
+          <div className="space-y-4">
+            {thread.notes.map((note) => (
+              <div
+                key={note.id}
+                className="group relative bg-white dark:bg-apple-gray-700 border border-gray-200 dark:border-apple-gray-600 rounded-lg p-4 transition-all hover:border-blue-500 dark:hover:border-apple-blue-500"
+              >
+                {editingNoteId === note.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      className="w-full p-2 bg-gray-50 dark:bg-apple-gray-600 border border-gray-200 dark:border-apple-gray-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-apple-blue-500 min-h-[100px] text-gray-900 dark:text-white"
+                    />
+                    <div className="flex justify-end gap-2">
                       <button
-                        onClick={() => deleteNote(note.id)}
-                        className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-200/50 transition-colors flex-shrink-0"
-                        title="Delete message"
+                        onClick={() => setEditingNoteId(null)}
+                        className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 rounded"
                       >
-                        <X size={14} />
+                        <X size={16} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const updatedNotes = thread.notes.map(n =>
+                            n.id === note.id
+                              ? { ...n, content: editedContent, updatedAt: new Date().toISOString() }
+                              : n
+                          );
+                          onUpdate({ ...thread, notes: updatedNotes });
+                          setEditingNoteId(null);
+                        }}
+                        className="p-1.5 text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 rounded"
+                      >
+                        <Check size={16} />
                       </button>
                     </div>
-                    <div className="text-sm text-gray-600">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]}
-                        className="prose prose-sm max-w-none prose-p:leading-normal prose-pre:p-3 prose-pre:bg-gray-800 prose-pre:text-gray-100"
-                      >
-                        {cleanAnswer}
+                  </div>
+                ) : (
+                  <>
+                    <div className={`prose dark:prose-invert max-w-none ${note.isSecret && !revealedNotes.has(note.id) ? 'blur-sm' : ''}`}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {note.content}
                       </ReactMarkdown>
                     </div>
-                    {!isMessageSaved && (
-                      <button
-                        onClick={() => saveAIMessageAsNote(cleanAnswer)}
-                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        Save as note
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            {thread.notes.filter(note => note.content.includes('Q:') && note.content.includes('A:')).length === 0 && (
-              <div className="text-center text-gray-500 py-8">
-                <p>No AI conversations yet</p>
-                <p className="text-sm mt-1">Ask a question below to start a conversation</p>
+                    <div className="mt-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                      <span>{new Date(note.createdAt).toLocaleString()}</span>
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {note.isSecret ? (
+                          <button
+                            onClick={() => toggleNoteVisibility(note.id)}
+                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+                            title={revealedNotes.has(note.id) ? "Hide note" : "Reveal note"}
+                          >
+                            {revealedNotes.has(note.id) ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => toggleNoteSecret(note.id)}
+                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+                            title="Make note secret"
+                          >
+                            <EyeOff size={16} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setEditingNoteId(note.id);
+                            setEditedContent(note.content);
+                          }}
+                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+                          title="Edit note"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-            )}
+            ))}
+          </div>
+        </div>
+
+        {/* AI Sidebar with improved hover behavior */}
+        <div 
+          className={`relative flex border-l border-gray-200 dark:border-apple-gray-700 transition-all duration-300 ease-in-out ${
+            isSidebarExpanded ? 'w-80' : 'w-12'
+          }`}
+          onMouseLeave={handleSidebarMouseLeave}
+        >
+          {/* Hover trigger area - only active when not pinned */}
+          {!isSidebarPinned && (
+            <div 
+              className="absolute inset-y-0 -left-4 w-16 z-10"
+              onMouseEnter={handleSidebarMouseEnter}
+            />
+          )}
+          
+          {/* Sidebar content */}
+          <div 
+            className={`ai-sidebar-content absolute right-0 top-0 bottom-0 w-80 bg-white dark:bg-apple-gray-800 transition-transform duration-300 ease-in-out ${
+              isSidebarExpanded ? 'translate-x-0' : 'translate-x-[calc(100%-48px)]'
+            }`}
+          >
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-apple-gray-700">
+                <h2 className="font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
+                <button
+                  onClick={togglePin}
+                  className={`p-1.5 rounded-full transition-colors ${
+                    isSidebarPinned 
+                      ? 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20' 
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-apple-gray-700'
+                  }`}
+                  title={isSidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
+                >
+                  {isSidebarPinned ? <PinOff size={16} /> : <Pin size={16} />}
+                </button>
+              </div>
+              
+              {/* Rest of the sidebar content */}
+              <div className="flex-1 overflow-hidden">
+                <div className="h-full flex flex-col">
+                  <div className="flex-1 p-4 overflow-y-auto">
+                    <div className="space-y-4">
+                      {aiMessages.map((message, index) => (
+                        <div key={index} className="space-y-2">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            {message.question}
+                          </div>
+                          <div className="bg-gray-50 dark:bg-apple-gray-700 rounded-lg p-3 prose dark:prose-invert max-w-none text-sm">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {message.answer}
+                            </ReactMarkdown>
+                          </div>
+                          {!savedMessages.has(message.answer) && (
+                            <button
+                              onClick={() => saveAIMessageAsNote(message.answer)}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+                            >
+                              Save as note
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {aiMessages.length === 0 && (
+                        <div className="text-center text-gray-500 dark:text-gray-400">
+                          Ask AI to help you with your notes
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {apiKey && (
+                    <div className="p-4 border-t border-gray-200 dark:border-apple-gray-700">
+                      <div className="relative">
+                        <textarea
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          placeholder="Ask AI..."
+                          className="w-full p-2 pr-10 bg-gray-50 dark:bg-apple-gray-700 border border-gray-200 dark:border-apple-gray-600 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-apple-blue-500 resize-none"
+                          rows={3}
+                        />
+                        <button
+                          onClick={() => askAI(aiPrompt)}
+                          disabled={isGenerating || !aiPrompt.trim()}
+                          className="absolute right-2 bottom-2 p-1.5 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 disabled:opacity-50"
+                        >
+                          {isGenerating ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <Sparkles size={16} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+        multiple
+        accept=".txt,.pdf,.docx"
+      />
     </div>
   );
 }
