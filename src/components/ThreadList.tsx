@@ -24,17 +24,17 @@ export default function ThreadList({ threads, onSelect, onDelete, onToggleStar }
           <div
             key={thread.id}
             onClick={() => onSelect(thread.id)}
-            className={`group flex items-center justify-between p-3 bg-white rounded-lg border transition-all cursor-pointer ${
+            className={`group flex items-center justify-between p-3 bg-white dark:bg-apple-gray-800 rounded-lg border transition-all cursor-pointer ${
               thread.starred
-                ? 'border-blue-200 hover:border-blue-500 shadow-sm'
-                : 'border-gray-200 hover:border-blue-500'
+                ? 'border-blue-200 dark:border-apple-blue-500/30 hover:border-blue-500 dark:hover:border-apple-blue-500 shadow-sm dark:shadow-apple-blue-500/10'
+                : 'border-gray-200 dark:border-apple-gray-700 hover:border-blue-500 dark:hover:border-apple-blue-500'
             }`}
           >
             <div className="min-w-0 flex-1">
-              <h3 className="font-medium text-gray-900 truncate">
+              <h3 className="font-medium text-gray-900 dark:text-white truncate">
                 {thread.title || 'Untitled Thread'}
               </h3>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 {new Date(thread.updatedAt).toLocaleString()}
               </p>
             </div>
@@ -46,8 +46,8 @@ export default function ThreadList({ threads, onSelect, onDelete, onToggleStar }
                 }}
                 className={`p-1.5 rounded-full transition-all ${
                   thread.starred
-                    ? 'text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50'
-                    : 'text-gray-400 hover:text-yellow-500 opacity-0 group-hover:opacity-100'
+                    ? 'text-yellow-500 dark:text-yellow-400 hover:text-yellow-600 dark:hover:text-yellow-300 hover:bg-yellow-50 dark:hover:bg-yellow-400/10'
+                    : 'text-gray-400 dark:text-gray-500 hover:text-yellow-500 dark:hover:text-yellow-400 opacity-0 group-hover:opacity-100'
                 }`}
                 title={thread.starred ? 'Unstar thread' : 'Star thread'}
               >
@@ -58,7 +58,7 @@ export default function ThreadList({ threads, onSelect, onDelete, onToggleStar }
                   e.stopPropagation();
                   onDelete(thread.id);
                 }}
-                className="p-1.5 text-gray-400 hover:text-red-600 rounded-full hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-500 rounded-full hover:bg-gray-100 dark:hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Delete thread"
               >
                 <Trash2 size={16} />

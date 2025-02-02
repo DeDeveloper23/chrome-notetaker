@@ -24,6 +24,7 @@ export type GeminiModel =
 export interface Settings {
   apiKey: string;
   selectedModel: GeminiModel;
+  autoGenerateTitle?: boolean;
 }
 
 export const GEMINI_MODELS: { value: GeminiModel; label: string; description: string }[] = [
